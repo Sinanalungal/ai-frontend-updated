@@ -41,7 +41,6 @@ import { toast } from "sonner";
 import { classColors } from "@/constants/teethRelated";
 import { InfoItem, ToolButton } from "./ToolButton";
 import { hexToRgba } from "@/utility/hexToRgba";
-import { log } from "console";
 // import SelectionUI from "./SelectionUI";
 
 interface Drawing {
@@ -1004,10 +1003,11 @@ export default function Viewer() {
               : "transparent";
           ctx.strokeStyle = strokeColor;
 
-          ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-          ctx.shadowBlur = 5;
-          ctx.shadowOffsetX = 2 * (annIndex + 1);
-          ctx.shadowOffsetY = 2 * (annIndex + 1);
+          // ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+          // ctx.shadowBlur = 5;
+          // ctx.shadowBlur = 100;
+          // ctx.shadowOffsetX = 2 * (annIndex + 1);
+          // ctx.shadowOffsetY = 2 * (annIndex + 1);
 
           ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
           for (let i = 1; i < coord.poly.length; i++) {
@@ -1017,10 +1017,10 @@ export default function Viewer() {
           if (coord.showBackground) ctx.fill();
           if (coord.showStroke) ctx.stroke();
 
-          ctx.shadowColor = "transparent";
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
+          // ctx.shadowColor = "transparent";
+          // ctx.shadowBlur = 0;
+          // ctx.shadowOffsetX = 0;
+          // ctx.shadowOffsetY = 0;
 
           if (
             hoveredItem?.type === "annotation" &&
@@ -1150,10 +1150,10 @@ export default function Viewer() {
                   : "transparent";
               tempCtx.strokeStyle = strokeColor;
 
-              tempCtx.shadowColor = "rgba(0, 0, 0, 0.5)";
-              tempCtx.shadowBlur = 5;
-              tempCtx.shadowOffsetX = 2 * (annIndex + 1);
-              tempCtx.shadowOffsetY = 2 * (annIndex + 1);
+              // tempCtx.shadowColor = "rgba(0, 0, 0, 0.5)";
+              // tempCtx.shadowBlur = 5;
+              // tempCtx.shadowOffsetX = 2 * (annIndex + 1);
+              // tempCtx.shadowOffsetY = 2 * (annIndex + 1);
 
               tempCtx.moveTo(coord.poly[0][0], coord.poly[0][1]);
               for (let i = 1; i < coord.poly.length; i++) {
@@ -1163,10 +1163,10 @@ export default function Viewer() {
               if (coord.showBackground) tempCtx.fill();
               if (coord.showStroke) tempCtx.stroke();
 
-              tempCtx.shadowColor = "transparent";
-              tempCtx.shadowBlur = 0;
-              tempCtx.shadowOffsetX = 0;
-              tempCtx.shadowOffsetY = 0;
+              // tempCtx.shadowColor = "transparent";
+              // tempCtx.shadowBlur = 0;
+              // tempCtx.shadowOffsetX = 0;
+              // tempCtx.shadowOffsetY = 0;
 
               const label = `${annotation.class}`;
               const textMetrics = tempCtx.measureText(label);

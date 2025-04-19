@@ -633,7 +633,7 @@ export default function Viewer() {
     }
   };
 
-  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {    
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isAnnotationEnabled) return;
 
     const canvas = canvasRef.current;
@@ -651,9 +651,9 @@ export default function Viewer() {
 
     const displayedWidth = imageElement.clientWidth;
     const displayedHeight = imageElement.clientHeight;
-    
+
     const scaleX = displayedWidth / imageSize.width;
-    const scaleY = displayedHeight / imageSize.height;    
+    const scaleY = displayedHeight / imageSize.height;
 
     const hovered: any = findShapeAtPoint(x, y, scaleX, scaleY);
     setHoveredItem(hovered);
@@ -1631,6 +1631,8 @@ export default function Viewer() {
 
   // Theme classes
   const bgColor = theme === "dark" ? "bg-zinc-900" : "bg-gray-100";
+  const borderColorForLoader =
+    theme === "dark" ? "border-white" : "border-black";
   const textColor = theme === "dark" ? "text-zinc-100" : "text-gray-900";
   const barBgColor = theme === "dark" ? "bg-zinc-800" : "bg-white";
   const borderColor = theme === "dark" ? "border-zinc-700" : "border-gray-200";
@@ -2299,9 +2301,13 @@ export default function Viewer() {
 
         {/* Viewer */}
         <div className="flex-1 relative  overflow-hidden">
-        {isLoading && (
-            <div className="absolute  z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
-              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+          {isLoading && (
+            <div
+              className={`absolute  z-50 inset-0 flex items-center justify-center ${bgColor} bg-opacity-50`}
+            >
+              <div
+                className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${borderColorForLoader}`}
+              ></div>
             </div>
           )}
           <div
@@ -2375,7 +2381,6 @@ export default function Viewer() {
                       : "Drag and drop an image here, or click to select a file"}
                   </p>
                 </div>
-                
               </>
             )}
           </div>

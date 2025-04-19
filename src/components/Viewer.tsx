@@ -1,0 +1,2437 @@
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Maximize2,
+  Layers,
+  Settings,
+  Search,
+  Ruler,
+  Move,
+  Download,
+  FileText,
+  Moon,
+  Sun,
+  MousePointer,
+  Undo,
+  SquarePen,
+  Square,
+  Minus,
+  Dot,
+  ImageMinus,
+  Highlighter,
+  Play,
+  ChevronDown,
+  ChevronUp,
+} from "lucide-react";
+import { BsBoundingBoxCircles } from "react-icons/bs";
+import { MdOutlineEdit, MdOutlineCloudUpload } from "react-icons/md";
+import { RiDeleteBinLine } from "react-icons/ri";
+import { IoEyeOutline } from "react-icons/io5";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useDropzone } from "react-dropzone";
+import axios from "axios";
+import { toast } from "sonner";
+import { classColors } from "@/constants/teethRelated";
+import { InfoItem, ToolButton } from "./ToolButton";
+import { hexToRgba } from "@/utility/hexToRgba";
+import { log } from "console";
+// import SelectionUI from "./SelectionUI";
+
+interface Drawing {
+  type: string;
+  points: number[];
+  label: string;
+  id: string;
+  visible: boolean;
+  transform?: any;
+  toothNumber?: string;
+  pathology?: string;
+  customPathology?: string;
+  strokeColor?: string;
+  bgColor?: string;
+  showStroke?: boolean;
+  showBackground?: boolean;
+  OpenDrawer: boolean;
+}
+
+interface Annotation {
+  class: string;
+  roi_xyxy: Array<{
+    coordinates: number[];
+    poly?: number[][];
+    visible: boolean;
+    id: string;
+    label: string;
+    strokeColor?: string;
+    bgColor?: string;
+    showStroke?: boolean;
+    openDrawer: boolean;
+    showBackground?: boolean;
+  }>;
+}
+
+interface UploadResponse {
+  message: string;
+  data: {
+    inference_time: number;
+    results: Array<{
+      class: string;
+      roi_xyxy: number[][];
+      poly?: number[][][];
+    }>;
+    unique_id: string;
+  };
+}
+
+const SNAP_THRESHOLD = 10;
+
+export default function Viewer() {
+  const [theme, setTheme] = useState("dark");
+  const [infoPanelOpen, setInfoPanelOpen] = useState(true);
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [checkType, setCheckType] = useState<"qc" | "path">("qc");
+  const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
+  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
+    null
+  );
+  const [isLoading, setIsLoading] = useState(false);
+  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  const [imageSize, setImageSize] = useState({ width: 0, height: 0 });
+  const [drawings, setDrawings] = useState<Drawing[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentTool, setCurrentTool] = useState<string>("select");
+  const [startPoint, setStartPoint] = useState<{ x: number; y: number } | null>(
+    null
+  );
+  const [currentPoints, setCurrentPoints] = useState<number[]>([]);
+  const [isPolygonDrawing, setIsPolygonDrawing] = useState(false);
+  const [isTransforming, setIsTransforming] = useState(false);
+  const [selectedShape, setSelectedShape] = useState<string | null>(null);
+  const [transformOrigin, setTransformOrigin] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(
+    null
+  );
+  const [isDraggingPoint, setIsDraggingPoint] = useState(false);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(
+    null
+  );
+  const [draggedPointOffset, setDraggedPointOffset] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
+  const [drawingHistory, setDrawingHistory] = useState<Drawing[][]>([]);
+  const [showSelecting, setShowSelecting] = useState(false);
+  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingDrawing, setEditingDrawing] = useState<{
+    id: string;
+    toothNumber: string;
+    pathology: string;
+    customPathology: string;
+  } | null>(null);
+  const [hoveredItem, setHoveredItem] = useState<{
+    type: "annotation" | "drawing";
+    className?: string;
+    coordId?: string;
+    drawingId?: string;
+  } | null>(null);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
+
+  // Helper functions
+  const getScaledPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const canvas = canvasRef.current;
+    if (!canvas) return null;
+
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: e.clientX - rect.left,
+      y: e.clientY - rect.top,
+    };
+  };
+
+  const handleRemoveImage = () => {
+    setSelectedFile(null);
+    setUploadResponse(null);
+    setAnnotations([]);
+    setDrawings([]);
+    setDrawingHistory([]);
+    setIsDrawing(false);
+    setIsPolygonDrawing(false);
+    setCurrentPoints([]);
+    setImageSize({ width: 0, height: 0 });
+
+    const canvas = canvasRef.current;
+    if (canvas) {
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    }
+  };
+
+  const handleUndo = () => {
+    if (drawingHistory.length > 0) {
+      const previousState = drawingHistory[drawingHistory.length - 1];
+      setDrawings(previousState);
+      setDrawingHistory((history) => history.slice(0, -1));
+      if (showSelecting) {
+        setShowSelecting(false);
+      }
+    }
+  };
+
+  const handleUpload = async () => {
+    if (!selectedFile) return;
+
+    setIsLoading(true);
+    setAnnotations([]);
+    setUploadResponse(null);
+
+    const formData = new FormData();
+    formData.append("file", selectedFile);
+    formData.append("model_name", checkType);
+
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/inference/`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            "ngrok-skip-browser-warning": "1",
+          },
+        }
+      );
+
+      const responseData = res.data as UploadResponse;
+      setUploadResponse(responseData);
+      processApiResponse(responseData);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to process image");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const findNearestPoint = (x: number, y: number) => {
+    const threshold = 10;
+
+    for (const drawing of drawings) {
+      if (!drawing.visible) continue;
+
+      switch (drawing.type) {
+        case "rectangle": {
+          const points = [
+            [drawing.points[0], drawing.points[1]],
+            [drawing.points[2], drawing.points[1]],
+            [drawing.points[2], drawing.points[3]],
+            [drawing.points[0], drawing.points[3]],
+          ];
+
+          for (let i = 0; i < points.length; i++) {
+            const dx = points[i][0] - x;
+            const dy = points[i][1] - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+              return {
+                drawingId: drawing.id,
+                pointIndex: i,
+                originalX: points[i][0],
+                originalY: points[i][1],
+              };
+            }
+          }
+          break;
+        }
+        case "line": {
+          const points = [
+            [drawing.points[0], drawing.points[1]],
+            [drawing.points[2], drawing.points[3]],
+          ];
+
+          for (let i = 0; i < points.length; i++) {
+            const dx = points[i][0] - x;
+            const dy = points[i][1] - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+              return {
+                drawingId: drawing.id,
+                pointIndex: i,
+                originalX: points[i][0],
+                originalY: points[i][1],
+              };
+            }
+          }
+          break;
+        }
+        case "polygon": {
+          for (let i = 0; i < drawing.points.length; i += 2) {
+            const dx = drawing.points[i] - x;
+            const dy = drawing.points[i + 1] - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+              return {
+                drawingId: drawing.id,
+                pointIndex: i / 2,
+                originalX: drawing.points[i],
+                originalY: drawing.points[i + 1],
+              };
+            }
+          }
+          break;
+        }
+      }
+    }
+    return null;
+  };
+
+  const isPointInPolygon = (
+    x: number,
+    y: number,
+    points: any[] | number[][]
+  ) => {
+    let vertices: number[][] = [];
+    if (Array.isArray(points[0])) {
+      vertices = points as number[][];
+    } else {
+      vertices = [];
+      for (let i = 0; i < points.length; i += 2) {
+        vertices.push([points[i], points[i + 1]]);
+      }
+    }
+
+    let inside = false;
+    for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+      const xi = vertices[i][0];
+      const yi = vertices[i][1];
+      const xj = vertices[j][0];
+      const yj = vertices[j][1];
+
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  };
+
+  const findShapeAtPoint = (
+    x: number,
+    y: number,
+    scaleX: number,
+    scaleY: number
+  ) => {
+    for (const annotation of annotations) {
+      for (const coord of annotation.roi_xyxy) {
+        if (!coord.visible) continue;
+
+        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+          const scaledPoly = coord.poly.map(([px, py]) => [
+            px * scaleX,
+            py * scaleY,
+          ]);
+          if (isPointInPolygon(x, y, scaledPoly)) {
+            return {
+              type: "annotation",
+              className: annotation.class,
+              coordId: coord.id,
+            };
+          }
+        } else {
+          const [x1, y1, x2, y2] = coord.coordinates;
+          const scaledX1 = x1 * scaleX;
+          const scaledY1 = y1 * scaleY;
+          const scaledX2 = x2 * scaleX;
+          const scaledY2 = y2 * scaleY;
+
+          if (
+            x >= scaledX1 &&
+            x <= scaledX2 &&
+            y >= scaledY1 &&
+            y <= scaledY2
+          ) {
+            return {
+              type: "annotation",
+              className: annotation.class,
+              coordId: coord.id,
+            };
+          }
+        }
+      }
+    }
+
+    for (const drawing of drawings) {
+      if (!drawing.visible) continue;
+
+      switch (drawing.type) {
+        case "rectangle": {
+          const [x1, y1, x2, y2] = drawing.points;
+          if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+        case "line": {
+          const [x1, y1, x2, y2] = drawing.points;
+          const distance = pointToLineDistance(x, y, x1, y1, x2, y2);
+          if (distance < 10) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+        case "polygon": {
+          if (isPointInPolygon(x, y, drawing.points)) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+        case "point": {
+          const [px, py] = drawing.points;
+          const distance = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
+          if (distance < 10) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+      }
+    }
+    return null;
+  };
+
+  const pointToLineDistance = (
+    x: number,
+    y: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ) => {
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const len_sq = C * C + D * D;
+    const param = len_sq !== 0 ? dot / len_sq : -1;
+
+    let xx, yy;
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+
+    const dx = x - xx;
+    const dy = y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isAnnotationEnabled || (currentTool === "select" && !isTransforming))
+      return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const point = getScaledPoint(e);
+    if (!point) return;
+
+    const { x, y } = point;
+
+    if (currentTool === "move") {
+      const shapeId = findShapeAtPoint(x, y, 1, 1)?.drawingId;
+      if (shapeId) {
+        setIsTransforming(true);
+        setSelectedShape(shapeId);
+        setTransformOrigin({ x, y });
+        return;
+      }
+    }
+
+    if (isDrawing || (isPolygonDrawing && currentTool !== "polygon")) {
+      setIsDrawing(false);
+      setIsPolygonDrawing(false);
+      setCurrentPoints([]);
+      setStartPoint(null);
+      drawAnnotations();
+      return;
+    }
+
+    if (currentTool === "reshape") {
+      const nearestPoint = findNearestPoint(x, y);
+      if (nearestPoint) {
+        setSelectedDrawingId(nearestPoint.drawingId);
+        setSelectedPointIndex(nearestPoint.pointIndex);
+        setIsDraggingPoint(true);
+        setDraggedPointOffset({
+          x: x - nearestPoint.originalX,
+          y: y - nearestPoint.originalY,
+        });
+        return;
+      }
+    } else if (currentTool === "polygon") {
+      if (!isPolygonDrawing) {
+        setIsPolygonDrawing(true);
+        setCurrentPoints([x, y]);
+      } else {
+        const startX = currentPoints[0];
+        const startY = currentPoints[1];
+        const distance = Math.sqrt(
+          Math.pow(x - startX, 2) + Math.pow(y - startY, 2)
+        );
+
+        if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
+          setDrawingHistory((history) => [...history, [...drawings]]);
+          const newDrawing: Drawing = {
+            type: "polygon",
+            points: [...currentPoints],
+            label: ``,
+            id: `drawing-${Date.now()}`,
+            visible: true,
+            transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
+            strokeColor: "#FFFFFF",
+            bgColor: "rgba(255, 255, 255, 0.3)",
+            showStroke: true,
+            showBackground: true,
+            OpenDrawer: false,
+          };
+          setDrawings([...drawings, newDrawing]);
+          setIsPolygonDrawing(false);
+          setCurrentPoints([]);
+          setShowSelecting(true);
+        } else {
+          setCurrentPoints((prev) => [...prev, x, y]);
+        }
+      }
+    } else if (currentTool === "point") {
+      setDrawingHistory((history) => [...history, [...drawings]]);
+      const newDrawing: Drawing = {
+        type: "point",
+        points: [x, y],
+        label: ``,
+        id: `drawing-${Date.now()}`,
+        visible: true,
+        transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
+        strokeColor: "#FFFFFF",
+        bgColor: "rgba(255, 255, 255, 0.3)",
+        showStroke: true,
+        OpenDrawer: false,
+        showBackground: true,
+      };
+      setDrawings([...drawings, newDrawing]);
+      setShowSelecting(true);
+    } else {
+      setIsDrawing(true);
+      setStartPoint({ x, y });
+    }
+  };
+
+  const drawShape = (ctx: CanvasRenderingContext2D, drawing: Drawing) => {
+    if (!drawing.visible) return;
+
+    ctx.beginPath();
+    ctx.strokeStyle =
+      drawing.showStroke && drawing.strokeColor
+        ? drawing.strokeColor
+        : "transparent";
+    ctx.fillStyle =
+      drawing.showBackground && drawing.bgColor
+        ? drawing.bgColor
+        : "transparent";
+    ctx.lineWidth = 2;
+
+    const points = drawing.points;
+    switch (drawing.type) {
+      case "rectangle":
+        if (drawing.showBackground) {
+          ctx.fillRect(
+            points[0],
+            points[1],
+            points[2] - points[0],
+            points[3] - points[1]
+          );
+        }
+        if (drawing.showStroke) {
+          ctx.strokeRect(
+            points[0],
+            points[1],
+            points[2] - points[0],
+            points[3] - points[1]
+          );
+        }
+        break;
+      case "line":
+        ctx.moveTo(points[0], points[1]);
+        ctx.lineTo(points[2], points[3]);
+        if (drawing.showStroke) ctx.stroke();
+        break;
+      case "point":
+        ctx.arc(points[0], points[1], 3, 0, Math.PI * 2);
+        if (drawing.showBackground) ctx.fill();
+        if (drawing.showStroke) ctx.stroke();
+        break;
+      case "polygon":
+        ctx.moveTo(points[0], points[1]);
+        for (let i = 2; i < points.length; i += 2) {
+          ctx.lineTo(points[i], points[i + 1]);
+        }
+        ctx.closePath();
+        if (drawing.showBackground) ctx.fill();
+        if (drawing.showStroke) ctx.stroke();
+        break;
+    }
+
+    if (
+      drawing.label &&
+      hoveredItem?.type === "drawing" &&
+      hoveredItem.drawingId === drawing.id
+    ) {
+      ctx.font = "12px Poppins";
+      const textMetrics = ctx.measureText(drawing.label);
+      ctx.fillStyle =
+        theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(points[0], points[1] - 20, textMetrics.width + 10, 20);
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(drawing.label, points[0] + 5, points[1] - 5);
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {    
+    if (!isAnnotationEnabled) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const imageElement = containerRef.current?.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+    
+    const scaleX = displayedWidth / imageSize.width;
+    const scaleY = displayedHeight / imageSize.height;    
+
+    const hovered: any = findShapeAtPoint(x, y, scaleX, scaleY);
+    setHoveredItem(hovered);
+
+    if (isTransforming && selectedShape && currentTool === "move") {
+      const drawing = drawings.find((d) => d.id === selectedShape);
+      if (!drawing || !transformOrigin) return;
+
+      const dx = x - transformOrigin.x;
+      const dy = y - transformOrigin.y;
+
+      setDrawings(
+        drawings.map((d) => {
+          if (d.id === selectedShape) {
+            return {
+              ...d,
+              points: d.points.map((point, index) =>
+                index % 2 === 0 ? point + dx : point + dy
+              ),
+              transform: {
+                ...d.transform,
+                translate: {
+                  x: (d.transform?.translate?.x || 0) + dx,
+                  y: (d.transform?.translate?.y || 0) + dy,
+                },
+              },
+            };
+          }
+          return d;
+        })
+      );
+
+      setTransformOrigin({ x, y });
+      drawAnnotations();
+      return;
+    }
+
+    const point = getScaledPoint(e);
+    if (!point) return;
+
+    if (
+      isDraggingPoint &&
+      selectedDrawingId !== null &&
+      selectedPointIndex !== null
+    ) {
+      const offsetX = draggedPointOffset
+        ? point.x - draggedPointOffset.x
+        : point.x;
+      const offsetY = draggedPointOffset
+        ? point.y - draggedPointOffset.y
+        : point.y;
+
+      setDrawings((prev) =>
+        prev.map((drawing) => {
+          if (drawing.id !== selectedDrawingId) return drawing;
+
+          const newPoints = [...drawing.points];
+          switch (drawing.type) {
+            case "rectangle": {
+              if (selectedPointIndex === 0) {
+                newPoints[0] = offsetX;
+                newPoints[1] = offsetY;
+              } else if (selectedPointIndex === 1) {
+                newPoints[2] = offsetX;
+                newPoints[1] = offsetY;
+              } else if (selectedPointIndex === 2) {
+                newPoints[2] = offsetX;
+                newPoints[3] = offsetY;
+              } else if (selectedPointIndex === 3) {
+                newPoints[0] = offsetX;
+                newPoints[3] = offsetY;
+              }
+              break;
+            }
+            case "line": {
+              const pointIndex = selectedPointIndex * 2;
+              newPoints[pointIndex] = offsetX;
+              newPoints[pointIndex + 1] = offsetY;
+              break;
+            }
+            case "polygon": {
+              newPoints[selectedPointIndex * 2] = offsetX;
+              newPoints[selectedPointIndex * 2 + 1] = offsetY;
+              break;
+            }
+          }
+          return { ...drawing, points: newPoints };
+        })
+      );
+
+      drawAnnotations();
+      return;
+    }
+
+    if (isDrawing || isPolygonDrawing) {
+      drawAnnotations();
+
+      if (currentTool === "polygon" && isPolygonDrawing) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.moveTo(currentPoints[0], currentPoints[1]);
+        for (let i = 2; i < currentPoints.length; i += 2) {
+          ctx.lineTo(currentPoints[i], currentPoints[i + 1]);
+        }
+        ctx.lineTo(x, y);
+
+        const startX = currentPoints[0];
+        const startY = currentPoints[1];
+        const distance = Math.sqrt(
+          Math.pow(x - startX, 2) + Math.pow(y - startY, 2)
+        );
+        if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
+          ctx.lineTo(startX, startY);
+        }
+
+        ctx.stroke();
+      } else if (startPoint) {
+        drawShape(ctx, {
+          type: currentTool,
+          points: [startPoint.x, startPoint.y, x, y],
+          visible: true,
+          label: "",
+          id: "",
+          strokeColor: "#FFFFFF",
+          bgColor: "rgba(255, 255, 255, 0.3)",
+          showStroke: true,
+          showBackground: true,
+        } as any);
+      }
+    }
+  };
+
+  const renderTransformButton = (drawing: Drawing) => {
+    if (!drawing.visible || currentTool !== "move") return null;
+
+    const x = drawing.points[0] + (drawing.transform?.translate.x || 0);
+    const y = drawing.points[1] + (drawing.transform?.translate.y || 0);
+
+    return (
+      <button
+        className={`absolute p-1 rounded-full transform -translate-x-1/2 -translate-y-1/2 cursor-move ${
+          theme === "dark" ? "bg-white" : "bg-white"
+        }`}
+        style={{ left: x, top: y }}
+        onMouseDown={(e) => {
+          e.stopPropagation();
+          setIsTransforming(true);
+          setSelectedShape(drawing.id);
+          setTransformOrigin({ x: e.clientX, y: e.clientY });
+        }}
+      >
+        <Move size={12} color="black" />
+      </button>
+    );
+  };
+
+  const endDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (isDraggingPoint) {
+      setIsDraggingPoint(false);
+      setSelectedDrawingId(null);
+      setSelectedPointIndex(null);
+      setDraggedPointOffset(null);
+      return;
+    }
+
+    if ((!isDrawing && !isPolygonDrawing) || !isAnnotationEnabled) return;
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    setSelectionPosition({ x, y });
+
+    setDrawingHistory((history) => [...history, [...drawings]]);
+
+    let newDrawing: Drawing | null = null;
+
+    if (currentTool === "polygon") {
+      if (e.detail === 2) {
+        newDrawing = {
+          type: "polygon",
+          points: [...currentPoints],
+          label: "",
+          id: `drawing-${Date.now()}`,
+          visible: true,
+          strokeColor: "#FFFFFF",
+          bgColor: "rgba(255, 255, 255, 0.3)",
+          showStroke: true,
+          OpenDrawer: false,
+          showBackground: true,
+        };
+        setIsPolygonDrawing(false);
+        setCurrentPoints([]);
+      }
+    } else if (currentTool === "point") {
+      newDrawing = {
+        type: "point",
+        points: [x, y],
+        label: "",
+        id: `drawing-${Date.now()}`,
+        visible: true,
+        strokeColor: "#FFFFFF",
+        bgColor: "rgba(255, 255, 255, 0.3)",
+        showStroke: true,
+        OpenDrawer: false,
+        showBackground: true,
+      };
+      setIsDrawing(false);
+    } else if (startPoint) {
+      newDrawing = {
+        type: currentTool,
+        points: [startPoint.x, startPoint.y, x, y],
+        label: "",
+        id: `drawing-${Date.now()}`,
+        visible: true,
+        strokeColor: "#FFFFFF",
+        bgColor: "rgba(255, 255, 255, 0.3)",
+        showStroke: true,
+        OpenDrawer: false,
+        showBackground: true,
+      };
+      setIsDrawing(false);
+      setStartPoint(null);
+    }
+
+    if (newDrawing) {
+      setDrawings([...drawings, newDrawing]);
+      setShowSelecting(true);
+    }
+  };
+
+  const handleSelectionSubmit = (
+    toothNumber: string,
+    pathology: string,
+    customPathology?: string
+  ) => {
+    setDrawings((prev) => {
+      const lastDrawing = prev[prev.length - 1];
+      if (lastDrawing) {
+        const label =
+          pathology === "Other" && customPathology
+            ? `${toothNumber}  ${customPathology}`
+            : `${toothNumber}  ${pathology}`;
+
+        const updatedDrawing = {
+          ...lastDrawing,
+          label,
+          toothNumber,
+          pathology,
+          customPathology,
+        };
+        return [...prev.slice(0, -1), updatedDrawing];
+      }
+      return prev;
+    });
+    setShowSelecting(false);
+  };
+
+  const processApiResponse = (responseData: UploadResponse) => {
+    const classMap = new Map<string, Annotation>();
+
+    responseData.data.results.forEach((result, index) => {
+      const className = result.class;
+
+      if (!classMap.has(className)) {
+        classMap.set(className, {
+          class: className,
+          roi_xyxy: [],
+        });
+      }
+
+      const annotation = classMap.get(className)!;
+
+      annotation.roi_xyxy.push({
+        coordinates: result.roi_xyxy[0],
+        poly: result.poly ? result.poly[0] : undefined,
+        visible: true,
+        id: `${className}-${index}`,
+        label: (index + 1).toString(),
+        strokeColor: "#FF0000",
+        bgColor: classColors[className] || "rgba(255, 0, 0, 0.5)",
+        showStroke:
+          checkType == "qc" ||
+          (checkType == "path" && result?.poly && result?.poly[0]?.length == 0)
+            ? true
+            : false,
+        showBackground: checkType == "path" ? true : false,
+        openDrawer: false,
+      });
+    });
+
+    setAnnotations(Array.from(classMap.values()));
+  };
+
+  const toggleDrawingVisibility = (drawingId: string) => {
+    setDrawings((prev) =>
+      prev.map((drawing) => ({
+        ...drawing,
+        visible: drawing.id === drawingId ? !drawing.visible : drawing.visible,
+      }))
+    );
+  };
+
+  const drawAnnotations = useCallback(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container || !imageSize.width || !imageSize.height) return;
+
+    const imageElement = container.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+
+    canvas.width = displayedWidth;
+    canvas.height = displayedHeight;
+    canvas.style.width = `${displayedWidth}px`;
+    canvas.style.height = `${displayedHeight}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!isAnnotationEnabled) return;
+
+    const scaleX = displayedWidth / imageSize.width;
+    const scaleY = displayedHeight / imageSize.height;
+
+    annotations.forEach((annotation, annIndex) => {
+      annotation.roi_xyxy.forEach((coord) => {
+        if (!coord.visible) return;
+
+        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+          ctx.beginPath();
+          const bgColor =
+            coord.showBackground && coord.bgColor
+              ? coord.bgColor
+              : "transparent";
+          ctx.fillStyle = bgColor;
+          const strokeColor =
+            coord.showStroke && coord.strokeColor
+              ? coord.strokeColor
+              : "transparent";
+          ctx.strokeStyle = strokeColor;
+
+          ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
+          ctx.shadowBlur = 5;
+          ctx.shadowOffsetX = 2 * (annIndex + 1);
+          ctx.shadowOffsetY = 2 * (annIndex + 1);
+
+          ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
+          for (let i = 1; i < coord.poly.length; i++) {
+            ctx.lineTo(coord.poly[i][0] * scaleX, coord.poly[i][1] * scaleY);
+          }
+          ctx.closePath();
+          if (coord.showBackground) ctx.fill();
+          if (coord.showStroke) ctx.stroke();
+
+          ctx.shadowColor = "transparent";
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
+
+          if (
+            hoveredItem?.type === "annotation" &&
+            hoveredItem.className === annotation.class &&
+            hoveredItem.coordId === coord.id
+          ) {
+            const label = `${coord.label}. ${annotation.class}`.trim();
+            if (label) {
+              ctx.font = "12px Poppins";
+              const textMetrics = ctx.measureText(label);
+              const textHeight = 20;
+              const labelX = coord.poly[0][0] * scaleX;
+              const labelY = coord.poly[0][1] * scaleY;
+
+              ctx.fillStyle =
+                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+              ctx.fillRect(
+                labelX,
+                labelY - textHeight,
+                textMetrics.width + 10,
+                textHeight
+              );
+
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillText(label, labelX + 5, labelY - 5);
+            }
+          }
+        } else {
+          const [x1, y1, x2, y2] = coord.coordinates;
+
+          const scaledX1 = x1 * scaleX;
+          const scaledY1 = y1 * scaleY;
+          const scaledX2 = x2 * scaleX;
+          const scaledY2 = y2 * scaleY;
+
+          if (coord.showStroke && coord.strokeColor) {
+            ctx.strokeStyle = coord.strokeColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+              scaledX1,
+              scaledY1,
+              scaledX2 - scaledX1,
+              scaledY2 - scaledY1
+            );
+          }
+
+          if (
+            hoveredItem?.type === "annotation" &&
+            hoveredItem.className === annotation.class &&
+            hoveredItem.coordId === coord.id
+          ) {
+            const label = `${coord.label} ${annotation.class}`.trim();
+            if (label) {
+              ctx.font = "12px Poppins";
+              const textMetrics = ctx.measureText(label);
+              const textHeight = 20;
+
+              ctx.fillStyle =
+                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+              ctx.fillRect(
+                scaledX1,
+                scaledY1 - textHeight,
+                textMetrics.width + 10,
+                textHeight
+              );
+
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillText(label, scaledX1 + 5, scaledY1 - 5);
+            }
+          }
+        }
+      });
+    });
+
+    drawings.forEach((drawing) => drawShape(ctx, drawing));
+  }, [
+    annotations,
+    isAnnotationEnabled,
+    imageSize,
+    drawings,
+    checkType,
+    hoveredItem,
+    theme,
+  ]);
+
+  const handleDownloadWithAnnotations = () => {
+    if (!selectedFile) {
+      toast.error("No image to download");
+      return;
+    }
+
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d");
+    if (!tempCtx) return;
+
+    tempCanvas.width = imageSize.width;
+    tempCanvas.height = imageSize.height;
+
+    const img = new Image();
+    img.onload = () => {
+      const displayedImage = containerRef.current?.querySelector("img");
+      if (!displayedImage) return;
+
+      const displayedWidth = displayedImage.clientWidth;
+      const displayedHeight = displayedImage.clientHeight;
+
+      const scaleX = imageSize.width / displayedWidth;
+      const scaleY = imageSize.height / displayedHeight;
+
+      tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
+
+      if (isAnnotationEnabled) {
+        annotations.forEach((annotation, annIndex) => {
+          annotation.roi_xyxy.forEach((coord) => {
+            if (!coord.visible) return;
+
+            if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+              tempCtx.beginPath();
+              const bgColor =
+                coord.showBackground && coord.bgColor
+                  ? coord.bgColor
+                  : "transparent";
+              tempCtx.fillStyle = bgColor;
+              const strokeColor =
+                coord.showStroke && coord.strokeColor
+                  ? coord.strokeColor
+                  : "transparent";
+              tempCtx.strokeStyle = strokeColor;
+
+              tempCtx.shadowColor = "rgba(0, 0, 0, 0.5)";
+              tempCtx.shadowBlur = 5;
+              tempCtx.shadowOffsetX = 2 * (annIndex + 1);
+              tempCtx.shadowOffsetY = 2 * (annIndex + 1);
+
+              tempCtx.moveTo(coord.poly[0][0], coord.poly[0][1]);
+              for (let i = 1; i < coord.poly.length; i++) {
+                tempCtx.lineTo(coord.poly[i][0], coord.poly[i][1]);
+              }
+              tempCtx.closePath();
+              if (coord.showBackground) tempCtx.fill();
+              if (coord.showStroke) tempCtx.stroke();
+
+              tempCtx.shadowColor = "transparent";
+              tempCtx.shadowBlur = 0;
+              tempCtx.shadowOffsetX = 0;
+              tempCtx.shadowOffsetY = 0;
+
+              const label = `${annotation.class}`;
+              const textMetrics = tempCtx.measureText(label);
+              const textHeight = 20;
+              tempCtx.font = "12px Poppins";
+              tempCtx.fillStyle =
+                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+              tempCtx.fillRect(
+                coord.poly[0][0],
+                coord.poly[0][1] - textHeight,
+                textMetrics.width + 10,
+                textHeight
+              );
+
+              tempCtx.fillStyle = "#FFFFFF";
+              tempCtx.fillText(
+                label,
+                coord.poly[0][0] + 5,
+                coord.poly[0][1] - 5
+              );
+            } else {
+              const [x1, y1, x2, y2] = coord.coordinates;
+
+              if (coord.showStroke && coord.strokeColor) {
+                tempCtx.strokeStyle = coord.strokeColor;
+                tempCtx.lineWidth = 2;
+                tempCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+              }
+
+              const label = `${annotation.class} ${coord.label}`;
+              const textMetrics = tempCtx.measureText(label);
+              const textHeight = 20;
+              tempCtx.font = "12px Poppins";
+              tempCtx.fillStyle =
+                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+              tempCtx.fillRect(
+                x1,
+                y1 - textHeight,
+                textMetrics.width + 10,
+                textHeight
+              );
+
+              tempCtx.fillStyle = "#FFFFFF";
+              tempCtx.fillText(label, x1 + 5, y1 - 5);
+            }
+          });
+        });
+
+        drawings.forEach((drawing) => {
+          if (!drawing.visible) return;
+
+          tempCtx.beginPath();
+          tempCtx.strokeStyle =
+            drawing.showStroke && drawing.strokeColor
+              ? drawing.strokeColor
+              : "transparent";
+          tempCtx.fillStyle =
+            drawing.showBackground && drawing.bgColor
+              ? drawing.bgColor
+              : "transparent";
+          tempCtx.lineWidth = 2 * scaleX;
+          tempCtx.font = `12px Poppins`;
+
+          switch (drawing.type) {
+            case "rectangle": {
+              const scaledX1 = drawing.points[0] * scaleX;
+              const scaledY1 = drawing.points[1] * scaleY;
+              const scaledX2 = drawing.points[2] * scaleX;
+              const scaledY2 = drawing.points[3] * scaleY;
+
+              if (drawing.showBackground) {
+                tempCtx.fillRect(
+                  scaledX1,
+                  scaledY1,
+                  scaledX2 - scaledX1,
+                  scaledY2 - scaledY1
+                );
+              }
+              if (drawing.showStroke) {
+                tempCtx.strokeRect(
+                  scaledX1,
+                  scaledY1,
+                  scaledX2 - scaledX1,
+                  scaledY2 - scaledY1
+                );
+              }
+
+              if (drawing.label) {
+                const textMetrics = tempCtx.measureText(drawing.label);
+                const textHeight = 20 * scaleY;
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(
+                  scaledX1,
+                  scaledY1 - textHeight,
+                  textMetrics.width + 10 * scaleX,
+                  textHeight
+                );
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(
+                  drawing.label,
+                  scaledX1 + 5 * scaleX,
+                  scaledY1 - 5 * scaleY
+                );
+              }
+              break;
+            }
+
+            case "line": {
+              const scaledX1 = drawing.points[0] * scaleX;
+              const scaledY1 = drawing.points[1] * scaleY;
+              const scaledX2 = drawing.points[2] * scaleX;
+              const scaledY2 = drawing.points[3] * scaleY;
+
+              tempCtx.moveTo(scaledX1, scaledY1);
+              tempCtx.lineTo(scaledX2, scaledY2);
+              if (drawing.showStroke) tempCtx.stroke();
+
+              if (drawing.label) {
+                const textMetrics = tempCtx.measureText(drawing.label);
+                const textHeight = 20 * scaleY;
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(
+                  scaledX1,
+                  scaledY1 - textHeight,
+                  textMetrics.width + 10 * scaleX,
+                  textHeight
+                );
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(
+                  drawing.label,
+                  scaledX1 + 5 * scaleX,
+                  scaledY1 - 5 * scaleY
+                );
+              }
+              break;
+            }
+            case "point": {
+              const scaledX = drawing.points[0] * scaleX;
+              const scaledY = drawing.points[1] * scaleY;
+
+              tempCtx.beginPath();
+              tempCtx.arc(scaledX, scaledY, 3 * scaleX, 0, Math.PI * 2);
+              if (drawing.showBackground) tempCtx.fill();
+              if (drawing.showStroke) tempCtx.stroke();
+
+              if (drawing.label) {
+                const textMetrics = tempCtx.measureText(drawing.label);
+                const textHeight = 20 * scaleY;
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(
+                  scaledX,
+                  scaledY - textHeight,
+                  textMetrics.width + 10 * scaleX,
+                  textHeight
+                );
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(
+                  drawing.label,
+                  scaledX + 5 * scaleX,
+                  scaledY - 5 * scaleY
+                );
+              }
+              break;
+            }
+
+            case "polygon": {
+              if (drawing.points.length >= 4) {
+                const scaledPoints = drawing.points.map((point, index) =>
+                  index % 2 === 0 ? point * scaleX : point * scaleY
+                );
+
+                tempCtx.moveTo(scaledPoints[0], scaledPoints[1]);
+                for (let i = 2; i < scaledPoints.length; i += 2) {
+                  tempCtx.lineTo(scaledPoints[i], scaledPoints[i + 1]);
+                }
+                tempCtx.closePath();
+                if (drawing.showBackground) tempCtx.fill();
+                if (drawing.showStroke) tempCtx.stroke();
+
+                if (drawing.label) {
+                  const textMetrics = tempCtx.measureText(drawing.label);
+                  const textHeight = 20 * scaleY;
+                  tempCtx.fillStyle =
+                    theme === "dark"
+                      ? "rgba(0, 0, 0, 0.7)"
+                      : "rgba(0, 0, 0, 0.7)";
+                  tempCtx.fillRect(
+                    scaledPoints[0],
+                    scaledPoints[1] - textHeight,
+                    textMetrics.width + 10 * scaleX,
+                    textHeight
+                  );
+                  tempCtx.fillStyle = "#FFFFFF";
+                  tempCtx.fillText(
+                    drawing.label,
+                    scaledPoints[0] + 5 * scaleX,
+                    scaledPoints[1] - 5 * scaleY
+                  );
+                }
+              }
+              break;
+            }
+          }
+        });
+      }
+
+      tempCanvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `annotated_${selectedFile.name}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          toast.success("Download completed");
+        }
+      }, "image/png");
+    };
+
+    img.src = URL.createObjectURL(selectedFile);
+  };
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
+    const file = acceptedFiles[0];
+    if (file) {
+      setUploadResponse(null);
+      setAnnotations([]);
+      setSelectedFile(file);
+
+      const img = new Image();
+      img.onload = () => {
+        setImageSize({
+          width: img.width,
+          height: img.height,
+        });
+      };
+      img.src = URL.createObjectURL(file);
+    }
+  }, []);
+
+  const {
+    getRootProps,
+    getInputProps,
+    isDragActive,
+    isDragReject,
+  } = useDropzone({
+    onDrop,
+    accept: {
+      "image/*": [".jpeg", ".png", ".gif", ".jpg"],
+    },
+    multiple: false,
+  });
+
+  const updateAnnotationLabel = (
+    className: string,
+    coordId: string,
+    newLabel: string
+  ) => {
+    setAnnotations((prev) =>
+      prev.map((ann) => {
+        if (ann.class === className) {
+          return {
+            ...ann,
+            roi_xyxy: ann.roi_xyxy.map((coord) => ({
+              ...coord,
+              label: coord.id === coordId ? newLabel : coord.label,
+            })),
+          };
+        }
+        return ann;
+      })
+    );
+    setEditingId(null);
+  };
+
+  const toggleAnnotationVisibility = (className: string, coordId: string) => {
+    setAnnotations((prev) =>
+      prev.map((ann) => {
+        if (ann.class === className) {
+          return {
+            ...ann,
+            roi_xyxy: ann.roi_xyxy.map((coord) => ({
+              ...coord,
+              visible: coord.id === coordId ? !coord.visible : coord.visible,
+            })),
+          };
+        }
+        return ann;
+      })
+    );
+  };
+
+  const toggleDrawerVisiblility = (className: string, coordId: string) => {
+    setAnnotations((prev) =>
+      prev.map((ann) => {
+        if (ann.class === className) {
+          return {
+            ...ann,
+            roi_xyxy: ann.roi_xyxy.map((coord) => ({
+              ...coord,
+              openDrawer:
+                coord.id === coordId ? !coord.openDrawer : coord.openDrawer,
+            })),
+          };
+        }
+        return ann;
+      })
+    );
+  };
+
+  const handleDelete = (className: string, coordId: string) => {
+    setAnnotations((prev) =>
+      prev
+        .map((ann) => {
+          if (ann.class === className) {
+            return {
+              ...ann,
+              roi_xyxy: ann.roi_xyxy.filter((coord) => coord.id !== coordId),
+            };
+          }
+          return ann;
+        })
+        .filter((ann) => ann.roi_xyxy.length > 0)
+    );
+  };
+
+  const handleKeyPress = (
+    e: React.KeyboardEvent,
+    className: string,
+    coordId: string,
+    label: string
+  ) => {
+    if (e.key === "Enter") {
+      updateAnnotationLabel(className, coordId, label);
+      setEditingId(null);
+    }
+  };
+
+  const deleteDrawing = (drawingId: string) => {
+    setDrawings((prev) => prev.filter((drawing) => drawing.id !== drawingId));
+  };
+
+  const ManageDrawerInCustom = (drawingId: string) => {
+    setDrawings((prev) =>
+      prev.map((drawing) =>
+        drawing.id === drawingId
+          ? { ...drawing, OpenDrawer: !drawing.OpenDrawer }
+          : drawing
+      )
+    );
+  };
+
+  const updateDrawingColor = (
+    drawingId: string,
+    field: "strokeColor" | "bgColor",
+    value: string
+  ) => {
+    setDrawings((prev) =>
+      prev.map((drawing) =>
+        drawing.id === drawingId ? { ...drawing, [field]: value } : drawing
+      )
+    );
+  };
+
+  const toggleDrawingDisplay = (
+    drawingId: string,
+    field: "showStroke" | "showBackground"
+  ) => {
+    setDrawings((prev) =>
+      prev.map((drawing) =>
+        drawing.id === drawingId
+          ? { ...drawing, [field]: !drawing[field] }
+          : drawing
+      )
+    );
+  };
+
+  const updateAnnotationColor = (
+    className: string,
+    coordId: string,
+    field: "strokeColor" | "bgColor",
+    value: string
+  ) => {
+    setAnnotations((prev) =>
+      prev.map((ann) => {
+        if (ann.class === className) {
+          return {
+            ...ann,
+            roi_xyxy: ann.roi_xyxy.map((coord) =>
+              coord.id === coordId ? { ...coord, [field]: value } : coord
+            ),
+          };
+        }
+        return ann;
+      })
+    );
+  };
+
+  const toggleAnnotationDisplay = (
+    className: string,
+    coordId: string,
+    field: "showStroke" | "showBackground"
+  ) => {
+    setAnnotations((prev) =>
+      prev.map((ann) => {
+        if (ann.class === className) {
+          return {
+            ...ann,
+            roi_xyxy: ann.roi_xyxy.map((coord) =>
+              coord.id === coordId
+                ? { ...coord, [field]: !coord[field] }
+                : coord
+            ),
+          };
+        }
+        return ann;
+      })
+    );
+  };
+
+  // Effects
+  useEffect(() => {
+    drawAnnotations();
+  }, [drawAnnotations]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
+  }, [currentTool]);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (isTransforming) {
+        setIsTransforming(false);
+        setSelectedShape(null);
+        setTransformOrigin(null);
+      }
+    };
+
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [isTransforming]);
+
+  useEffect(() => {
+    if (selectedFile) {
+      handleUpload();
+    }
+  }, [checkType, selectedFile]);
+
+  // Theme classes
+  const bgColor = theme === "dark" ? "bg-zinc-900" : "bg-gray-100";
+  const textColor = theme === "dark" ? "text-zinc-100" : "text-gray-900";
+  const barBgColor = theme === "dark" ? "bg-zinc-800" : "bg-white";
+  const borderColor = theme === "dark" ? "border-zinc-700" : "border-gray-200";
+  const buttonHoverColor =
+    theme === "dark" ? "hover:bg-zinc-700" : "hover:bg-gray-200";
+  const buttonSelectColor = theme === "dark" ? "bg-zinc-700" : "bg-gray-200";
+  const secondaryTextColor =
+    theme === "dark" ? "text-zinc-400" : "text-gray-500";
+  const panelBgColor = theme === "dark" ? "bg-zinc-800" : "bg-gray-50";
+
+  const renderCustomAnnotationsList = () => (
+    <div className="space-y-2 text-sm">
+      {drawings.length > 0 && (
+        <div className="mb-4">
+          {drawings.map((drawing: any) => (
+            <div
+              key={drawing.id}
+              className={`flex flex-col ${
+                theme === "dark" ? "bg-zinc-700" : "bg-gray-200"
+              } py-2 px-3 mb-2 rounded`}
+            >
+              {editingDrawing?.id === drawing.id ? (
+                <div className="flex flex-col gap-2 max-w-[60%]">
+                  <input
+                    type="text"
+                    className={`w-full ${
+                      theme === "dark"
+                        ? "bg-zinc-600 text-gray-300"
+                        : "bg-gray-100 text-black"
+                    } text-xs px-2 py-1 rounded`}
+                    value={drawing.label}
+                    onChange={(e) => {
+                      setDrawings((prev: any) =>
+                        prev.map((d: any) => {
+                          if (d.id === drawing.id) {
+                            return { ...d, label: e.target.value };
+                          }
+                          return d;
+                        })
+                      );
+                    }}
+                    onBlur={() => setEditingDrawing(null)}
+                    autoFocus
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="flex justify-between items-center">
+                    <div className="max-w-[60%] overflow-hidden">
+                      {drawing.label.trim().length > 0 ? (
+                        <span
+                          className={`${textColor} text-sm block truncate`}
+                          title={drawing.label}
+                        >
+                          {drawing.label}
+                        </span>
+                      ) : (
+                        <span
+                          className={`${secondaryTextColor} text-sm block truncate`}
+                          title={drawing.label}
+                        >
+                          ____
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center space-x-3 flex-shrink-0">
+                      <button
+                        className="cursor-pointer"
+                        onClick={() =>
+                          setEditingDrawing({
+                            id: drawing.id,
+                            toothNumber: drawing.toothNumber || "1",
+                            pathology: drawing.pathology || "Cavity",
+                            customPathology: drawing.customPathology || "",
+                          })
+                        }
+                      >
+                        <MdOutlineEdit
+                          size={16}
+                          className={
+                            theme === "dark"
+                              ? "text-zinc-400 hover:text-white"
+                              : "text-gray-500 hover:text-black"
+                          }
+                        />
+                      </button>
+                      <button
+                        className="cursor-pointer"
+                        onClick={() => toggleDrawingVisibility(drawing.id)}
+                      >
+                        <IoEyeOutline
+                          size={20}
+                          color={
+                            drawing.visible
+                              ? theme === "dark"
+                                ? "white"
+                                : "black"
+                              : "grey"
+                          }
+                        />
+                      </button>
+                      <button
+                        className="cursor-pointer"
+                        onClick={() => deleteDrawing(drawing.id)}
+                      >
+                        <RiDeleteBinLine size={20} color="grey" />
+                      </button>
+                      <button
+                        className="cursor-pointer"
+                        onClick={() => ManageDrawerInCustom(drawing.id)}
+                      >
+                        {drawing.OpenDrawer ? (
+                          <ChevronUp size={20} color="grey" />
+                        ) : (
+                          <ChevronDown size={20} color="grey" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+                  {drawing.OpenDrawer && (
+                    <div className="mt-2 flex flex-col gap-2">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={drawing.strokeColor || "#FFFFFF"}
+                          onChange={(e) =>
+                            updateDrawingColor(
+                              drawing.id,
+                              "strokeColor",
+                              e.target.value
+                            )
+                          }
+                          className="w-6 h-6"
+                        />
+                        <label className={`${secondaryTextColor} text-xs`}>
+                          Stroke
+                        </label>
+                        <input
+                          type="checkbox"
+                          checked={drawing.showStroke}
+                          onChange={() =>
+                            toggleDrawingDisplay(drawing.id, "showStroke")
+                          }
+                          className="ml-2"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="color"
+                          value={(() => {
+                            const rgbaMatch = drawing.bgColor?.match(
+                              /rgba?\((\d+), ?(\d+), ?(\d+)/
+                            );
+                            if (rgbaMatch) {
+                              const [r, g, b] = rgbaMatch.slice(1).map(Number);
+                              return (
+                                "#" +
+                                [r, g, b]
+                                  .map((x) => x.toString(16).padStart(2, "0"))
+                                  .join("")
+                              );
+                            }
+                            return "#000000"; // fallback color
+                          })()}
+                          onChange={(e) =>
+                            updateDrawingColor(
+                              drawing.id,
+                              "bgColor",
+                              hexToRgba(e.target.value, 0.3)
+                            )
+                          }
+                          className="w-6 h-6"
+                        />
+                        <label className={`${secondaryTextColor} text-xs`}>
+                          Background
+                        </label>
+                        <input
+                          type="checkbox"
+                          checked={drawing.showBackground}
+                          onChange={() =>
+                            toggleDrawingDisplay(drawing.id, "showBackground")
+                          }
+                          className="ml-2"
+                        />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderOPGAnnotationsList = () => (
+    <div className="space-y-2 text-sm">
+      {annotations.map((annotation) => (
+        <div key={annotation.class} className="mb-4">
+          {annotation.roi_xyxy.map((coord) => (
+            <div
+              key={coord.id}
+              className={`flex flex-col ${
+                theme === "dark" ? "bg-zinc-700" : "bg-gray-200"
+              } py-2 px-3 mb-2 rounded`}
+            >
+              <div className="flex justify-between items-center">
+                <div className="flex items-center max-w-[60%]">
+                  {editingId === coord.id ? (
+                    <input
+                      type="text"
+                      value={coord.label}
+                      onChange={(e) => {
+                        setAnnotations((prev: any) =>
+                          prev.map((ann: any) => ({
+                            ...ann,
+                            roi_xyxy: ann.roi_xyxy.map((c: any) =>
+                              c.id === coord.id
+                                ? { ...c, label: e.target.value }
+                                : c
+                            ),
+                          }))
+                        );
+                      }}
+                      onBlur={() => setEditingId(null)}
+                      onKeyPress={(e) =>
+                        handleKeyPress(
+                          e,
+                          annotation.class,
+                          coord.id,
+                          coord.label
+                        )
+                      }
+                      className={`w-16 px-2 py-1 ${
+                        theme === "dark"
+                          ? "bg-zinc-600 text-white"
+                          : "bg-gray-100 text-black"
+                      } border ${
+                        theme === "dark" ? "border-zinc-500" : "border-gray-300"
+                      } rounded`}
+                      autoFocus
+                    />
+                  ) : (
+                    <div className="flex gap-1 text-sm overflow-hidden">
+                      <span
+                        className={textColor}
+                        style={{ whiteSpace: "nowrap" }}
+                      >
+                        {coord.label}.
+                      </span>
+                      <span
+                        className={textColor}
+                        style={{ overflow: "hidden", textOverflow: "ellipsis" }}
+                      >
+                        {annotation.class}
+                      </span>
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center space-x-3 flex-shrink-0">
+                  <button
+                    className="cursor-pointer"
+                    onClick={() =>
+                      toggleAnnotationVisibility(annotation.class, coord.id)
+                    }
+                  >
+                    <IoEyeOutline
+                      size={20}
+                      color={
+                        coord.visible
+                          ? theme === "dark"
+                            ? "white"
+                            : "black"
+                          : "grey"
+                      }
+                    />
+                  </button>
+                  <button
+                    className="cursor-pointer"
+                    onClick={() => handleDelete(annotation.class, coord.id)}
+                  >
+                    <RiDeleteBinLine size={20} color="grey" />
+                  </button>
+                  <button
+                    className="cursor-pointer"
+                    onClick={() =>
+                      toggleDrawerVisiblility(annotation.class, coord.id)
+                    }
+                  >
+                    {coord.openDrawer ? (
+                      <ChevronUp size={20} color="grey" />
+                    ) : (
+                      <ChevronDown size={20} color="grey" />
+                    )}
+                  </button>
+                </div>
+              </div>
+              {coord.openDrawer && (
+                <div className="mt-2 flex flex-col gap-2">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={coord.strokeColor || "#FF0000"}
+                      onChange={(e) =>
+                        updateAnnotationColor(
+                          annotation.class,
+                          coord.id,
+                          "strokeColor",
+                          e.target.value
+                        )
+                      }
+                      className="w-6 h-6"
+                    />
+                    <label className={`${secondaryTextColor} text-xs`}>
+                      Stroke
+                    </label>
+                    <input
+                      type="checkbox"
+                      checked={coord.showStroke}
+                      onChange={() =>
+                        toggleAnnotationDisplay(
+                          annotation.class,
+                          coord.id,
+                          "showStroke"
+                        )
+                      }
+                      className="ml-2"
+                    />
+                  </div>
+                  {checkType == "path" && (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="color"
+                        value={(() => {
+                          const rgbaMatch = coord.bgColor?.match(
+                            /rgba?\((\d+), ?(\d+), ?(\d+)/
+                          );
+                          if (rgbaMatch) {
+                            const [r, g, b] = rgbaMatch.slice(1).map(Number);
+                            return (
+                              "#" +
+                              [r, g, b]
+                                .map((x) => x.toString(16).padStart(2, "0"))
+                                .join("")
+                            );
+                          }
+                          return "#ff0000"; // default fallback
+                        })()}
+                        onChange={(e) =>
+                          updateAnnotationColor(
+                            annotation.class,
+                            coord.id,
+                            "bgColor",
+                            `${hexToRgba(e.target.value, 0.5)}`
+                          )
+                        }
+                        className="w-6 h-6"
+                      />
+                      <label className={`${secondaryTextColor} text-xs`}>
+                        Background
+                      </label>
+                      <input
+                        type="checkbox"
+                        checked={coord.showBackground}
+                        onChange={() =>
+                          toggleAnnotationDisplay(
+                            annotation.class,
+                            coord.id,
+                            "showBackground"
+                          )
+                        }
+                        className="ml-2"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      ))}
+    </div>
+  );
+
+  return (
+    <div
+      className={`flex flex-col font-poppins h-screen ${bgColor} ${textColor}`}
+    >
+      {/* Top bar */}
+      <div
+        className={`flex items-center justify-between p-2 ${barBgColor} ${borderColor} border-b`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <img src="/vi-ai-favicon.svg" alt="" className="h-6 bg-contain" />
+            <span className="font-semibold">VI.AI</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 text-xs ${buttonHoverColor} rounded-full`}
+                  onClick={() =>
+                    setCheckType(checkType === "qc" ? "path" : "qc")
+                  }
+                >
+                  Switch to {checkType === "qc" ? "Pathology" : "QC"}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-xs font-medium shadow-lg"
+              >
+                Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 ${buttonHoverColor} rounded-full`}
+                  onClick={toggleTheme}
+                >
+                  {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Switch to {theme === "dark" ? "Light" : "Dark"} Mode
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 ${buttonHoverColor} rounded-full`}
+                  onClick={handleUpload}
+                >
+                  <Play size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Run AI Analysis
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className={`p-2 ${buttonHoverColor} rounded-full`}>
+                  <Maximize2 size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Enter Fullscreen
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className={`p-2 ${buttonHoverColor} rounded-full`}>
+                  <Settings size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Open Settings
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+
+      {/* Toolbar */}
+      <div
+        className={`flex items-center p-1 gap-1 ${barBgColor} ${borderColor} border-b overflow-x-auto`}
+      >
+        {/* <ToolButton
+          icon={<RotateCcw size={16} />}
+          label="Reset"
+          theme={theme}
+        /> */}
+        <ToolButton
+          icon={<Undo size={16} />}
+          label="Undo"
+          theme={theme}
+          onClick={handleUndo}
+        />
+        <ToolButton
+          icon={<MousePointer size={16} />}
+          label="Select"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("select");
+            setIsDrawing(false);
+            setIsPolygonDrawing(false);
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Move size={16} />}
+          label="Move"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("move");
+            setIsDrawing(false);
+            setIsPolygonDrawing(false);
+          }}
+        />
+        <ToolButton
+          icon={<SquarePen size={16} />}
+          label="Reshape"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("reshape");
+            setIsDrawing(false);
+            setIsPolygonDrawing(false);
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Square size={16} />}
+          label="Rectangle"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("rectangle");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Minus size={16} />}
+          label="Line"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("line");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Dot size={16} />}
+          label="Point"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("point");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<BsBoundingBoxCircles size={16} />}
+          label="Polygon"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("polygon");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton icon={<Ruler size={16} />} label="Measure" theme={theme} />
+        <div className={`h-6 border-l ${borderColor} mx-1`}></div>
+        <ToolButton
+          icon={<Download size={16} />}
+          label="Export"
+          theme={theme}
+          onClick={handleDownloadWithAnnotations}
+        />
+        <ToolButton
+          icon={<ImageMinus size={16} />}
+          label="Remove"
+          theme={theme}
+          onClick={handleRemoveImage}
+        />
+      </div>
+
+      {/* Main content */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* Left panel */}
+        <div
+          className={`w-10 ${panelBgColor} ${borderColor} border-r flex flex-col items-center py-2 gap-3`}
+        >
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 rounded-full ${buttonHoverColor} ${
+                    isAnnotationEnabled ? buttonSelectColor : ""
+                  }`}
+                  onClick={() => setIsAnnotationEnabled(!isAnnotationEnabled)}
+                >
+                  <Highlighter size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                {isAnnotationEnabled ? "Off" : "On"} Annotation
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className={`p-2 rounded-full ${buttonHoverColor}`}>
+                  <Layers size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Layer Management
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className={`p-2 rounded-full ${buttonHoverColor}`}>
+                  <FileText size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Reports & Documents
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className={`p-2 rounded-full ${buttonHoverColor}`}>
+                  <Search size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Search Features
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+
+        {/* Viewer */}
+        <div className="flex-1 relative  overflow-hidden">
+        {isLoading && (
+            <div className="absolute  z-50 inset-0 flex items-center justify-center bg-black bg-opacity-50">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-white"></div>
+            </div>
+          )}
+          <div
+            {...(!selectedFile ? getRootProps() : {})}
+            className={`text-center relative  h-full flex items-center justify-center ${
+              isDragActive ? "bg-gray-700" : ""
+            } ${isDragReject ? "border-red-500" : ""}`}
+            ref={containerRef}
+          >
+            {selectedFile ? (
+              <>
+                <p
+                  className={`${secondaryTextColor} text-xs mb-2 absolute top-2 left-0 right-0`}
+                >
+                  {"< " + selectedFile.name + " >"}
+                </p>
+                <div className="relative inline-block">
+                  <img
+                    src={URL.createObjectURL(selectedFile)}
+                    alt="Uploaded Scan"
+                    className="max-h-[90vh] max-w-full object-contain"
+                    style={{ width: "auto", height: "auto" }}
+                  />
+                  <canvas
+                    ref={canvasRef}
+                    className="absolute top-0 left-0"
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      cursor:
+                        currentTool === "select" ? "default" : "crosshair",
+                    }}
+                    onMouseDown={startDrawing}
+                    onMouseMove={draw}
+                    onMouseUp={endDrawing}
+                    onMouseLeave={() => {
+                      setIsDrawing(false);
+                      setHoveredItem(null);
+                      drawAnnotations();
+                    }}
+                  />
+                  {drawings.map((drawing) => renderTransformButton(drawing))}
+                </div>
+                {/* {showSelecting && (
+                  <div
+                    className="absolute"
+                    style={{ left: selectionPosition.x, top: selectionPosition.y }}
+                  >
+                    <SelectionUI
+                      canvasRef={canvasRef}
+                      handleSelectionSubmit={handleSelectionSubmit}
+                      toothNumberOptions={toothNumberOptions}
+                      pathologyOptions={pathologyOptions}
+                    />
+                  </div>
+                )} */}
+              </>
+            ) : (
+              <>
+                <input {...getInputProps()} />
+                <div className="flex flex-col items-center justify-center">
+                  <MdOutlineCloudUpload
+                    size={64}
+                    className={
+                      theme === "dark" ? "text-zinc-600" : "text-gray-400"
+                    }
+                  />
+                  <p className={`text-sm ${secondaryTextColor}`}>
+                    {isDragActive
+                      ? "Drop the image here ..."
+                      : "Drag and drop an image here, or click to select a file"}
+                  </p>
+                </div>
+                
+              </>
+            )}
+          </div>
+        </div>
+
+        {/* Right panel - collapsible */}
+        <div
+          className={`transition-all duration-300 ease-in-out ${
+            infoPanelOpen ? "w-80" : "w-8"
+          } ${panelBgColor} ${borderColor} border-l flex flex-col`}
+        >
+          <button
+            onClick={() => setInfoPanelOpen(!infoPanelOpen)}
+            className={`p-2 ${buttonHoverColor} flex justify-center items-center h-10 border-b ${borderColor}`}
+          >
+            {infoPanelOpen ? (
+              <ChevronRight size={18} />
+            ) : (
+              <ChevronLeft size={18} />
+            )}
+          </button>
+
+          {infoPanelOpen && (
+            <div className="p-3 flex-1 overflow-y-auto">
+              <h3 className="font-medium mb-3">Annotations</h3>
+
+              <Tabs defaultValue="OPG" className="w-full">
+                <TabsList
+                  className={`grid w-full grid-cols-2 border ${
+                    theme === "dark" ? "border-zinc-600" : "border-gray-200"
+                  }`}
+                >
+                  <TabsTrigger value="OPG">OPG</TabsTrigger>
+                  <TabsTrigger value="MARKINGS">MARKINGS</TabsTrigger>
+                </TabsList>
+                <TabsContent value="OPG" className="mt-2">
+                  {renderOPGAnnotationsList()}
+                </TabsContent>
+                <TabsContent value="MARKINGS" className="mt-2">
+                  {renderCustomAnnotationsList()}
+                </TabsContent>
+              </Tabs>
+
+              {/* <div className="mt-6">
+                <h4 className="font-medium mb-2">Viewing Parameters</h4>
+                <div className="space-y-2 text-sm">
+                  <InfoItem label="Window" value="350" theme={theme} />
+                  <InfoItem label="Level" value="50" theme={theme} />
+                  <InfoItem label="Zoom" value="100%" theme={theme} />
+                  <InfoItem label="Rotation" value="0°" theme={theme} />
+                </div>
+              </div> */}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

@@ -21,13 +21,9 @@ import {
   ImageMinus,
   Highlighter,
   Play,
-  ChevronDown,
-  ChevronUp,
 } from "lucide-react";
 import { BsBoundingBoxCircles } from "react-icons/bs";
-import { MdOutlineEdit, MdOutlineCloudUpload } from "react-icons/md";
-import { RiDeleteBinLine } from "react-icons/ri";
-import { IoEyeOutline } from "react-icons/io5";
+import { MdOutlineCloudUpload } from "react-icons/md";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Tooltip,
@@ -39,8 +35,9 @@ import { useDropzone } from "react-dropzone";
 import axios from "axios";
 import { toast } from "sonner";
 import { classColors } from "@/constants/teethRelated";
-import { InfoItem, ToolButton } from "./ToolButton";
-import { hexToRgba, rgbaToHex } from "@/utility/RgbaHexConvertions";
+import { ToolButton } from "./ToolButton";
+import RenderOPGAnnotationsList from "./RenderOpgAnnotationsList";
+import RenderCustomAnnotationsList from "./RenderCustomAnnotationsList";
 // import SelectionUI from "./SelectionUI";
 
 interface Drawing {
@@ -58,7 +55,7 @@ interface Drawing {
   showStroke?: boolean;
   showBackground?: boolean;
   OpenDrawer: boolean;
-  showLabel:boolean
+  showLabel: boolean;
 }
 
 interface Annotation {
@@ -133,12 +130,7 @@ export default function Viewer() {
   const [showSelecting, setShowSelecting] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editingDrawing, setEditingDrawing] = useState<{
-    id: string;
-    toothNumber: string;
-    pathology: string;
-    customPathology: string;
-  } | null>(null);
+
   const [hoveredItem, setHoveredItem] = useState<{
     type: "annotation" | "drawing";
     className?: string;
@@ -531,7 +523,7 @@ export default function Viewer() {
             showStroke: true,
             showBackground: true,
             OpenDrawer: false,
-            showLabel:false
+            showLabel: false,
           };
           setDrawings([...drawings, newDrawing]);
           setIsPolygonDrawing(false);
@@ -555,7 +547,7 @@ export default function Viewer() {
         showStroke: true,
         OpenDrawer: false,
         showBackground: true,
-        showLabel:false
+        showLabel: false,
       };
       setDrawings([...drawings, newDrawing]);
       setShowSelecting(true);
@@ -850,7 +842,7 @@ export default function Viewer() {
           showStroke: true,
           OpenDrawer: false,
           showBackground: true,
-          showLabel:false
+          showLabel: false,
         };
         setIsPolygonDrawing(false);
         setCurrentPoints([]);
@@ -867,7 +859,7 @@ export default function Viewer() {
         showStroke: true,
         OpenDrawer: false,
         showBackground: true,
-        showLabel:false
+        showLabel: false,
       };
       setIsDrawing(false);
     } else if (startPoint) {
@@ -882,7 +874,7 @@ export default function Viewer() {
         showStroke: true,
         OpenDrawer: false,
         showBackground: true,
-        showLabel:false
+        showLabel: false,
       };
       setIsDrawing(false);
       setStartPoint(null);
@@ -960,15 +952,6 @@ export default function Viewer() {
     });
 
     setAnnotations(Array.from(classMap.values()));
-  };
-
-  const toggleDrawingVisibility = (drawingId: string) => {
-    setDrawings((prev) =>
-      prev.map((drawing) => ({
-        ...drawing,
-        visible: drawing.id === drawingId ? !drawing.visible : drawing.visible,
-      }))
-    );
   };
 
   const drawAnnotations = useCallback(() => {
@@ -1471,173 +1454,6 @@ export default function Viewer() {
     multiple: false,
   });
 
-  const updateAnnotationLabel = (
-    className: string,
-    coordId: string,
-    newLabel: string
-  ) => {
-    setAnnotations((prev) =>
-      prev.map((ann) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord) => ({
-              ...coord,
-              label: coord.id === coordId ? newLabel : coord.label,
-            })),
-          };
-        }
-        return ann;
-      })
-    );
-    setEditingId(null);
-  };
-
-  const toggleAnnotationVisibility = (className: string, coordId: string) => {
-    setAnnotations((prev) =>
-      prev.map((ann) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord) => ({
-              ...coord,
-              visible: coord.id === coordId ? !coord.visible : coord.visible,
-            })),
-          };
-        }
-        return ann;
-      })
-    );
-  };
-
-  const toggleDrawerVisiblility = (className: string, coordId: string) => {
-    setAnnotations((prev) =>
-      prev.map((ann) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord) => ({
-              ...coord,
-              openDrawer:
-                coord.id === coordId ? !coord.openDrawer : coord.openDrawer,
-            })),
-          };
-        }
-        return ann;
-      })
-    );
-  };
-
-  const handleDelete = (className: string, coordId: string) => {
-    setAnnotations((prev) =>
-      prev
-        .map((ann) => {
-          if (ann.class === className) {
-            return {
-              ...ann,
-              roi_xyxy: ann.roi_xyxy.filter((coord) => coord.id !== coordId),
-            };
-          }
-          return ann;
-        })
-        .filter((ann) => ann.roi_xyxy.length > 0)
-    );
-  };
-
-  const handleKeyPress = (
-    e: React.KeyboardEvent,
-    className: string,
-    coordId: string,
-    label: string
-  ) => {
-    if (e.key === "Enter") {
-      updateAnnotationLabel(className, coordId, label);
-      setEditingId(null);
-    }
-  };
-
-  const deleteDrawing = (drawingId: string) => {
-    setDrawings((prev) => prev.filter((drawing) => drawing.id !== drawingId));
-  };
-
-  const ManageDrawerInCustom = (drawingId: string) => {
-    setDrawings((prev) =>
-      prev.map((drawing) =>
-        drawing.id === drawingId
-          ? { ...drawing, OpenDrawer: !drawing.OpenDrawer }
-          : drawing
-      )
-    );
-  };
-
-  const updateDrawingColor = (
-    drawingId: string,
-    field: "strokeColor" | "bgColor",
-    value: string
-  ) => {
-    setDrawings((prev) =>
-      prev.map((drawing) =>
-        drawing.id === drawingId ? { ...drawing, [field]: value } : drawing
-      )
-    );
-  };
-
-  const toggleDrawingDisplay = (
-    drawingId: string,
-    field: "showStroke" | "showBackground"
-  ) => {
-    setDrawings((prev) =>
-      prev.map((drawing) =>
-        drawing.id === drawingId
-          ? { ...drawing, [field]: !drawing[field] }
-          : drawing
-      )
-    );
-  };
-
-  const updateAnnotationColor = (
-    className: string,
-    coordId: string,
-    field: "strokeColor" | "bgColor",
-    value: string
-  ) => {
-    setAnnotations((prev) =>
-      prev.map((ann) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord) =>
-              coord.id === coordId ? { ...coord, [field]: value } : coord
-            ),
-          };
-        }
-        return ann;
-      })
-    );
-  };
-
-  const toggleAnnotationDisplay = (
-    className: string,
-    coordId: string,
-    field: "showStroke" | "showBackground"
-  ) => {
-    setAnnotations((prev) =>
-      prev.map((ann) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord) =>
-              coord.id === coordId
-                ? { ...coord, [field]: !coord[field] }
-                : coord
-            ),
-          };
-        }
-        return ann;
-      })
-    );
-  };
-
   // Effects
   useEffect(() => {
     drawAnnotations();
@@ -1682,373 +1498,6 @@ export default function Viewer() {
   const secondaryTextColor =
     theme === "dark" ? "text-zinc-400" : "text-gray-500";
   const panelBgColor = theme === "dark" ? "bg-zinc-800" : "bg-gray-50";
-
-  const renderCustomAnnotationsList = () => (
-    <div className="space-y-2 text-sm">
-      {drawings.length > 0 && (
-        <div className="mb-4">
-          {drawings.map((drawing: any) => (
-            <div
-              key={drawing.id}
-              className={`flex flex-col ${
-                theme === "dark" ? "bg-zinc-700" : "bg-gray-200"
-              } py-2 px-3 mb-2 rounded`}
-            >
-              {editingDrawing?.id === drawing.id ? (
-                <div className="flex flex-col gap-2 max-w-[60%]">
-                  <input
-                    type="text"
-                    className={`w-full ${
-                      theme === "dark"
-                        ? "bg-zinc-600 text-gray-300"
-                        : "bg-gray-100 text-black"
-                    } text-xs px-2 py-1 rounded`}
-                    value={drawing.label}
-                    onChange={(e) => {
-                      setDrawings((prev: any) =>
-                        prev.map((d: any) => {
-                          if (d.id === drawing.id) {
-                            return { ...d, label: e.target.value };
-                          }
-                          return d;
-                        })
-                      );
-                    }}
-                    onBlur={() => setEditingDrawing(null)}
-                    autoFocus
-                  />
-                </div>
-              ) : (
-                <>
-                  <div className="flex justify-between items-center">
-                    <div className="max-w-[60%] overflow-hidden">
-                      {drawing.label.trim().length > 0 ? (
-                        <span
-                          className={`${textColor} text-sm block truncate`}
-                          title={drawing.label}
-                        >
-                          {drawing.label}
-                        </span>
-                      ) : (
-                        <span
-                          className={`${secondaryTextColor} text-sm block truncate`}
-                          title={drawing.label}
-                        >
-                          ____
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex items-center space-x-3 flex-shrink-0">
-                      <button
-                        className="cursor-pointer"
-                        onClick={() =>
-                          setEditingDrawing({
-                            id: drawing.id,
-                            toothNumber: drawing.toothNumber || "1",
-                            pathology: drawing.pathology || "Cavity",
-                            customPathology: drawing.customPathology || "",
-                          })
-                        }
-                      >
-                        <MdOutlineEdit
-                          size={16}
-                          className={
-                            theme === "dark"
-                              ? "text-zinc-400 hover:text-white"
-                              : "text-gray-500 hover:text-black"
-                          }
-                        />
-                      </button>
-                      <button
-                        className="cursor-pointer"
-                        onClick={() => toggleDrawingVisibility(drawing.id)}
-                      >
-                        <IoEyeOutline
-                          size={20}
-                          color={
-                            drawing.visible
-                              ? theme === "dark"
-                                ? "white"
-                                : "black"
-                              : "grey"
-                          }
-                        />
-                      </button>
-                      <button
-                        className="cursor-pointer"
-                        onClick={() => deleteDrawing(drawing.id)}
-                      >
-                        <RiDeleteBinLine size={20} color="grey" />
-                      </button>
-                      <button
-                        className="cursor-pointer"
-                        onClick={() => ManageDrawerInCustom(drawing.id)}
-                      >
-                        {drawing.OpenDrawer ? (
-                          <ChevronUp size={20} color="grey" />
-                        ) : (
-                          <ChevronDown size={20} color="grey" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  {drawing.OpenDrawer && (
-                    <div className="mt-2 flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={drawing.strokeColor || "#FFFFFF"}
-                          onChange={(e) =>
-                            updateDrawingColor(
-                              drawing.id,
-                              "strokeColor",
-                              e.target.value
-                            )
-                          }
-                          className="w-6 h-6"
-                        />
-                        <label className={`${secondaryTextColor} text-xs`}>
-                          Stroke
-                        </label>
-                        <input
-                          type="checkbox"
-                          checked={drawing.showStroke}
-                          onChange={() =>
-                            toggleDrawingDisplay(drawing.id, "showStroke")
-                          }
-                          className="ml-2"
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="color"
-                          value={(() => {
-                            const rgbaMatch = drawing.bgColor?.match(
-                              /rgba?\((\d+), ?(\d+), ?(\d+)/
-                            );
-                            if (rgbaMatch) {
-                              const [r, g, b] = rgbaMatch.slice(1).map(Number);
-                              return (
-                                "#" +
-                                [r, g, b]
-                                  .map((x) => x.toString(16).padStart(2, "0"))
-                                  .join("")
-                              );
-                            }
-                            return "#000000"; // fallback color
-                          })()}
-                          onChange={(e) =>
-                            updateDrawingColor(
-                              drawing.id,
-                              "bgColor",
-                              hexToRgba(e.target.value, 0.3)
-                            )
-                          }
-                          className="w-6 h-6"
-                        />
-                        <label className={`${secondaryTextColor} text-xs`}>
-                          Background
-                        </label>
-                        <input
-                          type="checkbox"
-                          checked={drawing.showBackground}
-                          onChange={() =>
-                            toggleDrawingDisplay(drawing.id, "showBackground")
-                          }
-                          className="ml-2"
-                        />
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const renderOPGAnnotationsList = () => (
-    <div className="space-y-2 text-sm">
-      {annotations.map((annotation) => (
-        <div key={annotation.class} className="mb-4">
-          {annotation.roi_xyxy.map((coord) => (
-            <div
-              key={coord.id}
-              className={`flex flex-col ${
-                theme === "dark" ? "bg-zinc-700" : "bg-gray-200"
-              } py-2 px-3 mb-2 rounded`}
-            >
-              <div className="flex justify-between items-center">
-                <div className="flex items-center max-w-[60%]">
-                  {editingId === coord.id ? (
-                    <input
-                      type="text"
-                      value={coord.label}
-                      onChange={(e) => {
-                        setAnnotations((prev: any) =>
-                          prev.map((ann: any) => ({
-                            ...ann,
-                            roi_xyxy: ann.roi_xyxy.map((c: any) =>
-                              c.id === coord.id
-                                ? { ...c, label: e.target.value }
-                                : c
-                            ),
-                          }))
-                        );
-                      }}
-                      onBlur={() => setEditingId(null)}
-                      onKeyPress={(e) =>
-                        handleKeyPress(
-                          e,
-                          annotation.class,
-                          coord.id,
-                          coord.label
-                        )
-                      }
-                      className={`w-16 px-2 py-1 ${
-                        theme === "dark"
-                          ? "bg-zinc-600 text-white"
-                          : "bg-gray-100 text-black"
-                      } border ${
-                        theme === "dark" ? "border-zinc-500" : "border-gray-300"
-                      } rounded`}
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="flex gap-1 text-sm overflow-hidden">
-                      <span
-                        className={textColor}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {coord.label}.
-                      </span>
-                      <span
-                        className={textColor}
-                        style={{ overflow: "hidden", textOverflow: "ellipsis" }}
-                      >
-                        {annotation.class}
-                      </span>
-                    </div>
-                  )}
-                </div>
-                <div className="flex items-center space-x-3 flex-shrink-0">
-                  <button
-                    className="cursor-pointer"
-                    onClick={() =>
-                      toggleAnnotationVisibility(annotation.class, coord.id)
-                    }
-                  >
-                    <IoEyeOutline
-                      size={20}
-                      color={
-                        coord.visible
-                          ? theme === "dark"
-                            ? "white"
-                            : "black"
-                          : "grey"
-                      }
-                    />
-                  </button>
-                  <button
-                    className="cursor-pointer"
-                    onClick={() => handleDelete(annotation.class, coord.id)}
-                  >
-                    <RiDeleteBinLine size={20} color="grey" />
-                  </button>
-                  <button
-                    className="cursor-pointer"
-                    onClick={() =>
-                      toggleDrawerVisiblility(annotation.class, coord.id)
-                    }
-                  >
-                    {coord.openDrawer ? (
-                      <ChevronUp size={20} color="grey" />
-                    ) : (
-                      <ChevronDown size={20} color="grey" />
-                    )}
-                  </button>
-                </div>
-              </div>
-              {coord.openDrawer && (
-                <div className="mt-2 flex flex-col gap-2">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={
-                        coord.strokeColor
-                          ? rgbaToHex(coord.strokeColor)
-                          : "#FF0000"
-                      }
-                      onChange={(e) =>
-                        updateAnnotationColor(
-                          annotation.class,
-                          coord.id,
-                          "strokeColor",
-                          hexToRgba(e.target.value)
-                        )
-                      }
-                      className="w-6 h-6"
-                    />
-                    <label className={`${secondaryTextColor} text-xs`}>
-                      Stroke
-                    </label>
-                    <input
-                      type="checkbox"
-                      checked={coord.showStroke}
-                      onChange={() =>
-                        toggleAnnotationDisplay(
-                          annotation.class,
-                          coord.id,
-                          "showStroke"
-                        )
-                      }
-                      className="ml-2"
-                    />
-                  </div>
-                  {/* {checkType == "path" && ( */}
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="color"
-                      value={
-                        coord.bgColor ? rgbaToHex(coord.bgColor) : "#ff0000"
-                      }
-                      onChange={(e) =>
-                        updateAnnotationColor(
-                          annotation.class,
-                          coord.id,
-                          "bgColor",
-                          `${hexToRgba(e.target.value, 0.5)}`
-                        )
-                      }
-                      className="w-6 h-6"
-                    />
-                    <label className={`${secondaryTextColor} text-xs`}>
-                      Background
-                    </label>
-                    <input
-                      type="checkbox"
-                      checked={coord.showBackground}
-                      onChange={() =>
-                        toggleAnnotationDisplay(
-                          annotation.class,
-                          coord.id,
-                          "showBackground"
-                        )
-                      }
-                      className="ml-2"
-                    />
-                  </div>
-                  {/* )} */}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  );
 
   return (
     <div
@@ -2449,22 +1898,26 @@ export default function Viewer() {
                   <TabsTrigger value="MARKINGS">MARKINGS</TabsTrigger>
                 </TabsList>
                 <TabsContent value="OPG" className="mt-2">
-                  {renderOPGAnnotationsList()}
+                  <RenderOPGAnnotationsList
+                    annotations={annotations}
+                    theme={theme}
+                    editingId={editingId}
+                    setEditingId={setEditingId}
+                    setAnnotations={setAnnotations}
+                    textColor={textColor}
+                    secondaryTextColor={secondaryTextColor}
+                  />
                 </TabsContent>
                 <TabsContent value="MARKINGS" className="mt-2">
-                  {renderCustomAnnotationsList()}
+                  <RenderCustomAnnotationsList
+                    drawings={drawings}
+                    theme={theme}
+                    setDrawings={setDrawings}
+                    textColor={textColor}
+                    secondaryTextColor={secondaryTextColor}
+                  />
                 </TabsContent>
               </Tabs>
-
-              {/* <div className="mt-6">
-                <h4 className="font-medium mb-2">Viewing Parameters</h4>
-                <div className="space-y-2 text-sm">
-                  <InfoItem label="Window" value="350" theme={theme} />
-                  <InfoItem label="Level" value="50" theme={theme} />
-                  <InfoItem label="Zoom" value="100%" theme={theme} />
-                  <InfoItem label="Rotation" value="0°" theme={theme} />
-                </div>
-              </div> */}
             </div>
           )}
         </div>

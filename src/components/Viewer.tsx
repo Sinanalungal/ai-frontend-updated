@@ -42,8 +42,7 @@ import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
-} from "@/components/ui/hover-card"
-
+} from "@/components/ui/hover-card";
 
 interface Drawing {
   type: string;
@@ -1513,7 +1512,7 @@ export default function Viewer() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                  className={`p-2  max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
                   onClick={() =>
                     setCheckType(checkType === "qc" ? "path" : "qc")
                   }
@@ -1531,78 +1530,99 @@ export default function Viewer() {
             </Tooltip>
           </TooltipProvider>
 
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`p-2 ${buttonHoverColor} rounded-full`}
-                  onClick={toggleTheme}
+          <div>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`p-2 ${buttonHoverColor} rounded-full`}
+                    onClick={toggleTheme}
+                  >
+                    {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="px-3 py-1.5 text-sm font-medium shadow-lg"
                 >
-                  {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="px-3 py-1.5 text-sm font-medium shadow-lg"
-              >
-                Switch to {theme === "dark" ? "Light" : "Dark"} Mode
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                  Switch to {theme === "dark" ? "Light" : "Dark"} Mode
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  className={`p-2 ${buttonHoverColor} rounded-full`}
-                  onClick={handleUpload}
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    className={`p-2 ${buttonHoverColor} rounded-full`}
+                    onClick={handleUpload}
+                  >
+                    <Play size={18} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="px-3 py-1.5 text-sm font-medium shadow-lg"
                 >
-                  <Play size={18} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="px-3 py-1.5 text-sm font-medium shadow-lg"
-              >
-                Run AI Analysis
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+                  Run AI Analysis
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button className={`p-2 ${buttonHoverColor} rounded-full`}>
-                  <Maximize2 size={18} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="px-3 py-1.5 text-sm font-medium shadow-lg"
-              >
-                Enter Fullscreen
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button className={`p-2 ${buttonHoverColor} rounded-full`}>
+                    <Maximize2 size={18} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="px-3 py-1.5 text-sm font-medium shadow-lg"
+                >
+                  Enter Fullscreen
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
 
-          <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button className={`p-2 ${buttonHoverColor} rounded-full`}>
-                  <Settings size={18} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="bottom"
-                className="px-3 py-1.5 text-sm font-medium shadow-lg"
-              >
-                Open Settings
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button className={`p-2 ${buttonHoverColor} rounded-full`}>
+                    <Settings size={18} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent
+                  side="bottom"
+                  className="px-3 py-1.5 text-sm font-medium shadow-lg"
+                >
+                  Open Settings
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
         </div>
       </div>
-
+      <div className="min-[400px]:hidden flex justify-center ">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                onClick={() => setCheckType(checkType === "qc" ? "path" : "qc")}
+              >
+                Switch to {checkType === "qc" ? "Pathology" : "QC"}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="px-3 py-1.5 text-xs font-medium shadow-lg"
+            >
+              Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
       <div
         className={`flex items-center p-1 gap-1 ${barBgColor} ${borderColor} border-b overflow-x-auto scrollbar-hide`}
       >
@@ -1720,43 +1740,22 @@ export default function Viewer() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <HoverCard>
-      <HoverCardTrigger>
-        <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button className={`p-2 rounded-full ${buttonHoverColor}`}>
-                <Layers size={20} />
-              </button>
-            </TooltipTrigger>
-            {/* <TooltipContent
-              side="right"
-              className="px-3 py-1.5 text-sm font-medium shadow-lg"
-            >
-              Layer Management
-            </TooltipContent> */}
-          </Tooltip>
-        </TooltipProvider>
-      </HoverCardTrigger>
 
-      {/* Desktop hover card (right side) */}
-      <HoverCardContent
-        side="right"
-        sideOffset={8}
-        className="hidden md:block border-none font-poppins  text-xs bg-white shadow-2xl"
-      >
-        The React Framework – created and maintained by @vercel.
-      </HoverCardContent>
-
-      {/* Mobile hover card (bottom side) */}
-      <HoverCardContent
-        side="bottom"
-        sideOffset={8}
-        className="block md:hidden border-none font-poppins  text-xs bg-white shadow-2xl"
-      >
-        The React Framework – created and maintained by @vercel.
-      </HoverCardContent>
-    </HoverCard>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button className={`p-2 rounded-full ${buttonHoverColor}`}>
+                  <Layers size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Add Layer
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
 
           <TooltipProvider delayDuration={200}>
             <Tooltip>
@@ -1790,7 +1789,10 @@ export default function Viewer() {
           </TooltipProvider>
         </div>
 
-        <div className="flex-  relative overflow-hidden" style={{ width: "calc(100% - 4.5rem)" }}>
+        <div
+          className="flex justify-center relative overflow-hidden "
+          style={{ width: "calc(100% - 4.5rem)" }}
+        >
           {isLoading && (
             <div
               className={`absolute z-50 inset-0 flex items-center justify-center ${bgColor} bg-opacity-50`}
@@ -1800,6 +1802,7 @@ export default function Viewer() {
               ></div>
             </div>
           )}
+          
           <div
             {...(!selectedFile ? getRootProps() : {})}
             className={`text-center relative h-full flex items-center justify-center ${

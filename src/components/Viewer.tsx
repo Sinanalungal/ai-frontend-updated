@@ -2,14 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  Maximize2,
-  Layers,
-  Settings,
-  Search,
-  Ruler,
+  // Maximize2,
+  // Layers,
+  // Settings,
+  // Search,
+  // Ruler,
   Move,
   Download,
-  FileText,
+  // FileText,
   Moon,
   Sun,
   MousePointer,
@@ -38,7 +38,6 @@ import { classColors } from "@/constants/teethRelated";
 import { ToolButton } from "./ToolButton";
 import RenderOPGAnnotationsList from "./RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "./RenderCustomAnnotationsList";
-// import SelectionUI from "./SelectionUI";
 
 interface Drawing {
   type: string;
@@ -71,6 +70,7 @@ interface Annotation {
     showStroke?: boolean;
     openDrawer: boolean;
     showBackground?: boolean;
+    showLabel: boolean;
   }>;
 }
 
@@ -95,7 +95,7 @@ export default function Viewer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [checkType, setCheckType] = useState<"qc" | "path">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
-  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
+  const [_uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
@@ -128,15 +128,8 @@ export default function Viewer() {
   } | null>(null);
   const [drawingHistory, setDrawingHistory] = useState<Drawing[][]>([]);
   const [showSelecting, setShowSelecting] = useState(false);
-  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
+  const [_selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
-
-  const [hoveredItem, setHoveredItem] = useState<{
-    type: "annotation" | "drawing";
-    className?: string;
-    coordId?: string;
-    drawingId?: string;
-  } | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -145,7 +138,6 @@ export default function Viewer() {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-  // Helper functions
   const getScaledPoint = (e: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return null;
@@ -455,9 +447,56 @@ export default function Viewer() {
     return Math.sqrt(dx * dx + dy * dy);
   };
 
+  const handleShapeClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    const point = getScaledPoint(e);
+    if (!point) return;
+
+    const { x, y } = point;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const imageElement = containerRef.current?.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+
+    const scaleX = displayedWidth / imageSize.width;
+    const scaleY = displayedHeight / imageSize.height;
+
+    const shape = findShapeAtPoint(x, y, scaleX, scaleY);
+
+    if (shape) {
+      if (shape.type === "annotation") {
+        setAnnotations((prev) =>
+          prev.map((annotation) => {
+            if (annotation.class !== shape.className) return annotation;
+            return {
+              ...annotation,
+              roi_xyxy: annotation.roi_xyxy.map((coord) => {
+                if (coord.id !== shape.coordId) return coord;
+                return { ...coord, showLabel: !coord.showLabel };
+              }),
+            };
+          })
+        );
+      } else if (shape.type === "drawing") {
+        setDrawings((prev) =>
+          prev.map((drawing) => {
+            if (drawing.id !== shape.drawingId) return drawing;
+            return { ...drawing, showLabel: !drawing.showLabel };
+          })
+        );
+      }
+      drawAnnotations();
+    }
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (!isAnnotationEnabled || (currentTool === "select" && !isTransforming))
+    if (!isAnnotationEnabled || (currentTool === "select" && !isTransforming)) {
+      handleShapeClick(e);
       return;
+    }
 
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -569,7 +608,7 @@ export default function Viewer() {
       drawing.showBackground && drawing.bgColor
         ? drawing.bgColor
         : "transparent";
-    ctx.lineWidth = 1; //stroke width for the draawings
+    ctx.lineWidth = 1;
 
     const points = drawing.points;
     switch (drawing.type) {
@@ -612,11 +651,7 @@ export default function Viewer() {
         break;
     }
 
-    if (
-      drawing.label &&
-      hoveredItem?.type === "drawing" &&
-      hoveredItem.drawingId === drawing.id
-    ) {
+    if (drawing.label && drawing.showLabel) {
       ctx.font = "12px Poppins";
       const textMetrics = ctx.measureText(drawing.label);
       ctx.fillStyle =
@@ -643,14 +678,11 @@ export default function Viewer() {
     const imageElement = containerRef.current?.querySelector("img");
     if (!imageElement) return;
 
-    const displayedWidth = imageElement.clientWidth;
-    const displayedHeight = imageElement.clientHeight;
+    // const displayedWidth = imageElement.clientWidth;
+    // const displayedHeight = imageElement.clientHeight;
 
-    const scaleX = displayedWidth / imageSize.width;
-    const scaleY = displayedHeight / imageSize.height;
-
-    const hovered: any = findShapeAtPoint(x, y, scaleX, scaleY);
-    setHoveredItem(hovered);
+    // const scaleX = displayedWidth / imageSize.width;
+    // const scaleY = displayedHeight / imageSize.height;
 
     if (isTransforming && selectedShape && currentTool === "move") {
       const drawing = drawings.find((d) => d.id === selectedShape);
@@ -886,32 +918,32 @@ export default function Viewer() {
     }
   };
 
-  const handleSelectionSubmit = (
-    toothNumber: string,
-    pathology: string,
-    customPathology?: string
-  ) => {
-    setDrawings((prev) => {
-      const lastDrawing = prev[prev.length - 1];
-      if (lastDrawing) {
-        const label =
-          pathology === "Other" && customPathology
-            ? `${toothNumber}  ${customPathology}`
-            : `${toothNumber}  ${pathology}`;
+  // const handleSelectionSubmit = (
+  //   toothNumber: string,
+  //   pathology: string,
+  //   customPathology?: string
+  // ) => {
+  //   setDrawings((prev) => {
+  //     const lastDrawing = prev[prev.length - 1];
+  //     if (lastDrawing) {
+  //       const label =
+  //         pathology === "Other" && customPathology
+  //           ? `${toothNumber}  ${customPathology}`
+  //           : `${toothNumber}  ${pathology}`;
 
-        const updatedDrawing = {
-          ...lastDrawing,
-          label,
-          toothNumber,
-          pathology,
-          customPathology,
-        };
-        return [...prev.slice(0, -1), updatedDrawing];
-      }
-      return prev;
-    });
-    setShowSelecting(false);
-  };
+  //       const updatedDrawing = {
+  //         ...lastDrawing,
+  //         label,
+  //         toothNumber,
+  //         pathology,
+  //         customPathology,
+  //       };
+  //       return [...prev.slice(0, -1), updatedDrawing];
+  //     }
+  //     return prev;
+  //   });
+  //   setShowSelecting(false);
+  // };
 
   const processApiResponse = (responseData: UploadResponse) => {
     const classMap = new Map<string, Annotation>();
@@ -934,7 +966,6 @@ export default function Viewer() {
         visible: true,
         id: `${className}-${index}`,
         label: (index + 1).toString(),
-        // strokeColor: "#FF0000",
         strokeColor: classColors[className]
           ? classColors[className][1]
           : "rgb(255,0,0)",
@@ -942,12 +973,9 @@ export default function Viewer() {
           ? classColors[className][0]
           : "rgba(255, 0, 0, 0.5)",
         showStroke: true,
-        // checkType == "qc" ||
-        // (checkType == "path" && result?.poly && result?.poly[0]?.length == 0)
-        //   ? true
-        //   : false,
-        showBackground: checkType == "path" ? true : false,
+        showBackground: checkType === "path" ? true : false,
         openDrawer: false,
+        showLabel: false,
       });
     });
 
@@ -980,7 +1008,7 @@ export default function Viewer() {
     const scaleX = displayedWidth / imageSize.width;
     const scaleY = displayedHeight / imageSize.height;
 
-    annotations.forEach((annotation, annIndex) => {
+    annotations.forEach((annotation, _annIndex) => {
       annotation.roi_xyxy.forEach((coord) => {
         if (!coord.visible) return;
 
@@ -996,13 +1024,7 @@ export default function Viewer() {
               ? coord.strokeColor
               : "transparent";
           ctx.strokeStyle = strokeColor;
-          ctx.lineWidth = 0.8; //stroke width setting for pathology
-
-          // ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
-          // ctx.shadowBlur = 5;
-          // ctx.shadowBlur = 100;
-          // ctx.shadowOffsetX = 2 * (annIndex + 1);
-          // ctx.shadowOffsetY = 2 * (annIndex + 1);
+          ctx.lineWidth = 0.8;
 
           ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
           for (let i = 1; i < coord.poly.length; i++) {
@@ -1012,16 +1034,7 @@ export default function Viewer() {
           if (coord.showBackground) ctx.fill();
           if (coord.showStroke) ctx.stroke();
 
-          // ctx.shadowColor = "transparent";
-          // ctx.shadowBlur = 0;
-          // ctx.shadowOffsetX = 0;
-          // ctx.shadowOffsetY = 0;
-
-          if (
-            hoveredItem?.type === "annotation" &&
-            hoveredItem.className === annotation.class &&
-            hoveredItem.coordId === coord.id
-          ) {
+          if (coord.showLabel) {
             const label = `${coord.label}. ${annotation.class}`.trim();
             if (label) {
               ctx.font = "12px Poppins";
@@ -1051,7 +1064,6 @@ export default function Viewer() {
           const scaledX2 = x2 * scaleX;
           const scaledY2 = y2 * scaleY;
 
-          // Draw background if enabled
           if (coord.showBackground && coord.bgColor) {
             ctx.fillStyle = coord.bgColor;
             ctx.fillRect(
@@ -1062,7 +1074,6 @@ export default function Viewer() {
             );
           }
 
-          // Draw stroke if enabled
           if (coord.showStroke && coord.strokeColor) {
             ctx.strokeStyle = coord.strokeColor;
             ctx.lineWidth = 2;
@@ -1074,12 +1085,7 @@ export default function Viewer() {
             );
           }
 
-          // Draw label if hovered
-          if (
-            hoveredItem?.type === "annotation" &&
-            hoveredItem.className === annotation.class &&
-            hoveredItem.coordId === coord.id
-          ) {
+          if (coord.showLabel) {
             const label = `${coord.label} ${annotation.class}`.trim();
             if (label) {
               ctx.font = "12px Poppins";
@@ -1104,15 +1110,7 @@ export default function Viewer() {
     });
 
     drawings.forEach((drawing) => drawShape(ctx, drawing));
-  }, [
-    annotations,
-    isAnnotationEnabled,
-    imageSize,
-    drawings,
-    checkType,
-    hoveredItem,
-    theme,
-  ]);
+  }, [annotations, isAnnotationEnabled, imageSize, drawings, checkType, theme]);
 
   const handleDownloadWithAnnotations = () => {
     if (!selectedFile) {
@@ -1141,7 +1139,7 @@ export default function Viewer() {
       tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
 
       if (isAnnotationEnabled) {
-        annotations.forEach((annotation, annIndex) => {
+        annotations.forEach((annotation, _annIndex) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
@@ -1158,11 +1156,6 @@ export default function Viewer() {
                   : "transparent";
               tempCtx.strokeStyle = strokeColor;
 
-              // tempCtx.shadowColor = "rgba(0, 0, 0, 0.5)";
-              // tempCtx.shadowBlur = 5;
-              // tempCtx.shadowOffsetX = 2 * (annIndex + 1);
-              // tempCtx.shadowOffsetY = 2 * (annIndex + 1);
-
               tempCtx.moveTo(coord.poly[0][0], coord.poly[0][1]);
               for (let i = 1; i < coord.poly.length; i++) {
                 tempCtx.lineTo(coord.poly[i][0], coord.poly[i][1]);
@@ -1171,34 +1164,32 @@ export default function Viewer() {
               if (coord.showBackground) tempCtx.fill();
               if (coord.showStroke) tempCtx.stroke();
 
-              // tempCtx.shadowColor = "transparent";
-              // tempCtx.shadowBlur = 0;
-              // tempCtx.shadowOffsetX = 0;
-              // tempCtx.shadowOffsetY = 0;
+              if (coord.showLabel) {
+                const label = `${annotation.class}`;
+                const textMetrics = tempCtx.measureText(label);
+                const textHeight = 20;
+                tempCtx.font = "12px Poppins";
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(
+                  coord.poly[0][0],
+                  coord.poly[0][1] - textHeight,
+                  textMetrics.width + 10,
+                  textHeight
+                );
 
-              const label = `${annotation.class}`;
-              const textMetrics = tempCtx.measureText(label);
-              const textHeight = 20;
-              tempCtx.font = "12px Poppins";
-              tempCtx.fillStyle =
-                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
-              tempCtx.fillRect(
-                coord.poly[0][0],
-                coord.poly[0][1] - textHeight,
-                textMetrics.width + 10,
-                textHeight
-              );
-
-              tempCtx.fillStyle = "#FFFFFF";
-              tempCtx.fillText(
-                label,
-                coord.poly[0][0] + 5,
-                coord.poly[0][1] - 5
-              );
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(
+                  label,
+                  coord.poly[0][0] + 5,
+                  coord.poly[0][1] - 5
+                );
+              }
             } else {
               const [x1, y1, x2, y2] = coord.coordinates;
 
-              // Draw background rectangle
               const bgColor =
                 coord.showBackground && coord.bgColor
                   ? coord.bgColor
@@ -1209,31 +1200,32 @@ export default function Viewer() {
                 tempCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
               }
 
-              // Draw stroke
               if (coord.showStroke && coord.strokeColor) {
                 tempCtx.strokeStyle = coord.strokeColor;
                 tempCtx.lineWidth = 2;
                 tempCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
               }
 
-              const label = `${annotation.class} ${coord.label}`;
-              tempCtx.font = "12px Poppins";
-              const textMetrics = tempCtx.measureText(label);
-              const textHeight = 20;
+              if (coord.showLabel) {
+                const label = `${annotation.class} ${coord.label}`;
+                tempCtx.font = "12px Poppins";
+                const textMetrics = tempCtx.measureText(label);
+                const textHeight = 20;
 
-              // Label background
-              tempCtx.fillStyle =
-                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
-              tempCtx.fillRect(
-                x1,
-                y1 - textHeight,
-                textMetrics.width + 10,
-                textHeight
-              );
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(
+                  x1,
+                  y1 - textHeight,
+                  textMetrics.width + 10,
+                  textHeight
+                );
 
-              // Label text
-              tempCtx.fillStyle = "#FFFFFF";
-              tempCtx.fillText(label, x1 + 5, y1 - 5);
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(label, x1 + 5, y1 - 5);
+              }
             }
           });
         });
@@ -1277,7 +1269,7 @@ export default function Viewer() {
                 );
               }
 
-              if (drawing.label) {
+              if (drawing.showLabel && drawing.label) {
                 const textMetrics = tempCtx.measureText(drawing.label);
                 const textHeight = 20 * scaleY;
                 tempCtx.fillStyle =
@@ -1299,7 +1291,6 @@ export default function Viewer() {
               }
               break;
             }
-
             case "line": {
               const scaledX1 = drawing.points[0] * scaleX;
               const scaledY1 = drawing.points[1] * scaleY;
@@ -1310,7 +1301,7 @@ export default function Viewer() {
               tempCtx.lineTo(scaledX2, scaledY2);
               if (drawing.showStroke) tempCtx.stroke();
 
-              if (drawing.label) {
+              if (drawing.showLabel && drawing.label) {
                 const textMetrics = tempCtx.measureText(drawing.label);
                 const textHeight = 20 * scaleY;
                 tempCtx.fillStyle =
@@ -1341,7 +1332,7 @@ export default function Viewer() {
               if (drawing.showBackground) tempCtx.fill();
               if (drawing.showStroke) tempCtx.stroke();
 
-              if (drawing.label) {
+              if (drawing.showLabel && drawing.label) {
                 const textMetrics = tempCtx.measureText(drawing.label);
                 const textHeight = 20 * scaleY;
                 tempCtx.fillStyle =
@@ -1363,7 +1354,6 @@ export default function Viewer() {
               }
               break;
             }
-
             case "polygon": {
               if (drawing.points.length >= 4) {
                 const scaledPoints = drawing.points.map((point, index) =>
@@ -1378,7 +1368,7 @@ export default function Viewer() {
                 if (drawing.showBackground) tempCtx.fill();
                 if (drawing.showStroke) tempCtx.stroke();
 
-                if (drawing.label) {
+                if (drawing.showLabel && drawing.label) {
                   const textMetrics = tempCtx.measureText(drawing.label);
                   const textHeight = 20 * scaleY;
                   tempCtx.fillStyle =
@@ -1454,7 +1444,6 @@ export default function Viewer() {
     multiple: false,
   });
 
-  // Effects
   useEffect(() => {
     drawAnnotations();
   }, [drawAnnotations]);
@@ -1485,7 +1474,6 @@ export default function Viewer() {
     }
   }, [checkType, selectedFile]);
 
-  // Theme classes
   const bgColor = theme === "dark" ? "bg-zinc-900" : "bg-gray-100";
   const borderColorForLoader =
     theme === "dark" ? "border-white" : "border-black";
@@ -1503,7 +1491,6 @@ export default function Viewer() {
     <div
       className={`flex flex-col font-poppins h-screen ${bgColor} ${textColor}`}
     >
-      {/* Top bar */}
       <div
         className={`flex items-center justify-between p-2 ${barBgColor} ${borderColor} border-b`}
       >
@@ -1574,7 +1561,7 @@ export default function Viewer() {
             </Tooltip>
           </TooltipProvider>
 
-          <TooltipProvider delayDuration={200}>
+          {/* <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button className={`p-2 ${buttonHoverColor} rounded-full`}>
@@ -1604,19 +1591,13 @@ export default function Viewer() {
                 Open Settings
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </TooltipProvider> */}
         </div>
       </div>
 
-      {/* Toolbar */}
       <div
         className={`flex items-center p-1 gap-1 ${barBgColor} ${borderColor} border-b overflow-x-auto`}
       >
-        {/* <ToolButton
-          icon={<RotateCcw size={16} />}
-          label="Reset"
-          theme={theme}
-        /> */}
         <ToolButton
           icon={<Undo size={16} />}
           label="Undo"
@@ -1691,7 +1672,7 @@ export default function Viewer() {
             setIsTransforming(false);
           }}
         />
-        <ToolButton icon={<Ruler size={16} />} label="Measure" theme={theme} />
+        {/* <ToolButton icon={<Ruler size={16} />} label="Measure" theme={theme} /> */}
         <div className={`h-6 border-l ${borderColor} mx-1`}></div>
         <ToolButton
           icon={<Download size={16} />}
@@ -1707,9 +1688,7 @@ export default function Viewer() {
         />
       </div>
 
-      {/* Main content */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left panel */}
         <div
           className={`w-10 ${panelBgColor} ${borderColor} border-r flex flex-col items-center py-2 gap-3`}
         >
@@ -1733,7 +1712,7 @@ export default function Viewer() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          <TooltipProvider delayDuration={200}>
+          {/* <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button className={`p-2 rounded-full ${buttonHoverColor}`}>
@@ -1777,14 +1756,13 @@ export default function Viewer() {
                 Search Features
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </TooltipProvider> */}
         </div>
 
-        {/* Viewer */}
-        <div className="flex-1 relative  overflow-hidden">
+        <div className="flex-1 relative overflow-hidden">
           {isLoading && (
             <div
-              className={`absolute  z-50 inset-0 flex items-center justify-center ${bgColor} bg-opacity-50`}
+              className={`absolute z-50 inset-0 flex items-center justify-center ${bgColor} bg-opacity-50`}
             >
               <div
                 className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${borderColorForLoader}`}
@@ -1793,7 +1771,7 @@ export default function Viewer() {
           )}
           <div
             {...(!selectedFile ? getRootProps() : {})}
-            className={`text-center relative  h-full flex items-center justify-center ${
+            className={`text-center relative h-full flex items-center justify-center ${
               isDragActive ? "bg-gray-700" : ""
             } ${isDragReject ? "border-red-500" : ""}`}
             ref={containerRef}
@@ -1826,25 +1804,11 @@ export default function Viewer() {
                     onMouseUp={endDrawing}
                     onMouseLeave={() => {
                       setIsDrawing(false);
-                      setHoveredItem(null);
                       drawAnnotations();
                     }}
                   />
                   {drawings.map((drawing) => renderTransformButton(drawing))}
                 </div>
-                {/* {showSelecting && (
-                  <div
-                    className="absolute"
-                    style={{ left: selectionPosition.x, top: selectionPosition.y }}
-                  >
-                    <SelectionUI
-                      canvasRef={canvasRef}
-                      handleSelectionSubmit={handleSelectionSubmit}
-                      toothNumberOptions={toothNumberOptions}
-                      pathologyOptions={pathologyOptions}
-                    />
-                  </div>
-                )} */}
               </>
             ) : (
               <>
@@ -1867,7 +1831,6 @@ export default function Viewer() {
           </div>
         </div>
 
-        {/* Right panel - collapsible */}
         <div
           className={`transition-all duration-300 ease-in-out ${
             infoPanelOpen ? "w-80" : "w-8"

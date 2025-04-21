@@ -40,7 +40,7 @@ import axios from "axios";
 import { toast } from "sonner";
 import { classColors } from "@/constants/teethRelated";
 import { InfoItem, ToolButton } from "./ToolButton";
-import { hexToRgba } from "@/utility/hexToRgba";
+import { hexToRgba, rgbaToHex } from "@/utility/RgbaHexConvertions";
 // import SelectionUI from "./SelectionUI";
 
 interface Drawing {
@@ -58,6 +58,7 @@ interface Drawing {
   showStroke?: boolean;
   showBackground?: boolean;
   OpenDrawer: boolean;
+  showLabel:boolean
 }
 
 interface Annotation {
@@ -530,6 +531,7 @@ export default function Viewer() {
             showStroke: true,
             showBackground: true,
             OpenDrawer: false,
+            showLabel:false
           };
           setDrawings([...drawings, newDrawing]);
           setIsPolygonDrawing(false);
@@ -553,6 +555,7 @@ export default function Viewer() {
         showStroke: true,
         OpenDrawer: false,
         showBackground: true,
+        showLabel:false
       };
       setDrawings([...drawings, newDrawing]);
       setShowSelecting(true);
@@ -574,7 +577,7 @@ export default function Viewer() {
       drawing.showBackground && drawing.bgColor
         ? drawing.bgColor
         : "transparent";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1; //stroke width for the draawings
 
     const points = drawing.points;
     switch (drawing.type) {
@@ -847,6 +850,7 @@ export default function Viewer() {
           showStroke: true,
           OpenDrawer: false,
           showBackground: true,
+          showLabel:false
         };
         setIsPolygonDrawing(false);
         setCurrentPoints([]);
@@ -863,6 +867,7 @@ export default function Viewer() {
         showStroke: true,
         OpenDrawer: false,
         showBackground: true,
+        showLabel:false
       };
       setIsDrawing(false);
     } else if (startPoint) {
@@ -877,6 +882,7 @@ export default function Viewer() {
         showStroke: true,
         OpenDrawer: false,
         showBackground: true,
+        showLabel:false
       };
       setIsDrawing(false);
       setStartPoint(null);
@@ -936,13 +942,18 @@ export default function Viewer() {
         visible: true,
         id: `${className}-${index}`,
         label: (index + 1).toString(),
-        strokeColor: "#FF0000",
-        bgColor: classColors[className] || "rgba(255, 0, 0, 0.5)",
-        showStroke:
-          checkType == "qc" ||
-          (checkType == "path" && result?.poly && result?.poly[0]?.length == 0)
-            ? true
-            : false,
+        // strokeColor: "#FF0000",
+        strokeColor: classColors[className]
+          ? classColors[className][1]
+          : "rgb(255,0,0)",
+        bgColor: classColors[className]
+          ? classColors[className][0]
+          : "rgba(255, 0, 0, 0.5)",
+        showStroke: true,
+        // checkType == "qc" ||
+        // (checkType == "path" && result?.poly && result?.poly[0]?.length == 0)
+        //   ? true
+        //   : false,
         showBackground: checkType == "path" ? true : false,
         openDrawer: false,
       });
@@ -1002,6 +1013,7 @@ export default function Viewer() {
               ? coord.strokeColor
               : "transparent";
           ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = 0.8; //stroke width setting for pathology
 
           // ctx.shadowColor = "rgba(0, 0, 0, 0.5)";
           // ctx.shadowBlur = 5;
@@ -1056,6 +1068,18 @@ export default function Viewer() {
           const scaledX2 = x2 * scaleX;
           const scaledY2 = y2 * scaleY;
 
+          // Draw background if enabled
+          if (coord.showBackground && coord.bgColor) {
+            ctx.fillStyle = coord.bgColor;
+            ctx.fillRect(
+              scaledX1,
+              scaledY1,
+              scaledX2 - scaledX1,
+              scaledY2 - scaledY1
+            );
+          }
+
+          // Draw stroke if enabled
           if (coord.showStroke && coord.strokeColor) {
             ctx.strokeStyle = coord.strokeColor;
             ctx.lineWidth = 2;
@@ -1067,6 +1091,7 @@ export default function Viewer() {
             );
           }
 
+          // Draw label if hovered
           if (
             hoveredItem?.type === "annotation" &&
             hoveredItem.className === annotation.class &&
@@ -1190,6 +1215,18 @@ export default function Viewer() {
             } else {
               const [x1, y1, x2, y2] = coord.coordinates;
 
+              // Draw background rectangle
+              const bgColor =
+                coord.showBackground && coord.bgColor
+                  ? coord.bgColor
+                  : "transparent";
+
+              if (coord.showBackground) {
+                tempCtx.fillStyle = bgColor;
+                tempCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
+              }
+
+              // Draw stroke
               if (coord.showStroke && coord.strokeColor) {
                 tempCtx.strokeStyle = coord.strokeColor;
                 tempCtx.lineWidth = 2;
@@ -1197,9 +1234,11 @@ export default function Viewer() {
               }
 
               const label = `${annotation.class} ${coord.label}`;
+              tempCtx.font = "12px Poppins";
               const textMetrics = tempCtx.measureText(label);
               const textHeight = 20;
-              tempCtx.font = "12px Poppins";
+
+              // Label background
               tempCtx.fillStyle =
                 theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
               tempCtx.fillRect(
@@ -1209,6 +1248,7 @@ export default function Viewer() {
                 textHeight
               );
 
+              // Label text
               tempCtx.fillStyle = "#FFFFFF";
               tempCtx.fillText(label, x1 + 5, y1 - 5);
             }
@@ -1936,13 +1976,17 @@ export default function Viewer() {
                   <div className="flex items-center gap-2">
                     <input
                       type="color"
-                      value={coord.strokeColor || "#FF0000"}
+                      value={
+                        coord.strokeColor
+                          ? rgbaToHex(coord.strokeColor)
+                          : "#FF0000"
+                      }
                       onChange={(e) =>
                         updateAnnotationColor(
                           annotation.class,
                           coord.id,
                           "strokeColor",
-                          e.target.value
+                          hexToRgba(e.target.value)
                         )
                       }
                       className="w-6 h-6"
@@ -1963,52 +2007,40 @@ export default function Viewer() {
                       className="ml-2"
                     />
                   </div>
-                  {checkType == "path" && (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="color"
-                        value={(() => {
-                          const rgbaMatch = coord.bgColor?.match(
-                            /rgba?\((\d+), ?(\d+), ?(\d+)/
-                          );
-                          if (rgbaMatch) {
-                            const [r, g, b] = rgbaMatch.slice(1).map(Number);
-                            return (
-                              "#" +
-                              [r, g, b]
-                                .map((x) => x.toString(16).padStart(2, "0"))
-                                .join("")
-                            );
-                          }
-                          return "#ff0000"; // default fallback
-                        })()}
-                        onChange={(e) =>
-                          updateAnnotationColor(
-                            annotation.class,
-                            coord.id,
-                            "bgColor",
-                            `${hexToRgba(e.target.value, 0.5)}`
-                          )
-                        }
-                        className="w-6 h-6"
-                      />
-                      <label className={`${secondaryTextColor} text-xs`}>
-                        Background
-                      </label>
-                      <input
-                        type="checkbox"
-                        checked={coord.showBackground}
-                        onChange={() =>
-                          toggleAnnotationDisplay(
-                            annotation.class,
-                            coord.id,
-                            "showBackground"
-                          )
-                        }
-                        className="ml-2"
-                      />
-                    </div>
-                  )}
+                  {/* {checkType == "path" && ( */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="color"
+                      value={
+                        coord.bgColor ? rgbaToHex(coord.bgColor) : "#ff0000"
+                      }
+                      onChange={(e) =>
+                        updateAnnotationColor(
+                          annotation.class,
+                          coord.id,
+                          "bgColor",
+                          `${hexToRgba(e.target.value, 0.5)}`
+                        )
+                      }
+                      className="w-6 h-6"
+                    />
+                    <label className={`${secondaryTextColor} text-xs`}>
+                      Background
+                    </label>
+                    <input
+                      type="checkbox"
+                      checked={coord.showBackground}
+                      onChange={() =>
+                        toggleAnnotationDisplay(
+                          annotation.class,
+                          coord.id,
+                          "showBackground"
+                        )
+                      }
+                      className="ml-2"
+                    />
+                  </div>
+                  {/* )} */}
                 </div>
               )}
             </div>

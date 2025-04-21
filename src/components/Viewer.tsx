@@ -2,14 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  // Maximize2,
-  // Layers,
-  // Settings,
-  // Search,
-  // Ruler,
+  Maximize2,
+  Layers,
+  Settings,
+  Search,
+  Ruler,
   Move,
   Download,
-  // FileText,
+  FileText,
   Moon,
   Sun,
   MousePointer,
@@ -38,6 +38,12 @@ import { classColors } from "@/constants/teethRelated";
 import { ToolButton } from "./ToolButton";
 import RenderOPGAnnotationsList from "./RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "./RenderCustomAnnotationsList";
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from "@/components/ui/hover-card"
+
 
 interface Drawing {
   type: string;
@@ -95,7 +101,7 @@ export default function Viewer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [checkType, setCheckType] = useState<"qc" | "path">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
-  const [_uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
+  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
@@ -128,7 +134,7 @@ export default function Viewer() {
   } | null>(null);
   const [drawingHistory, setDrawingHistory] = useState<Drawing[][]>([]);
   const [showSelecting, setShowSelecting] = useState(false);
-  const [_selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
+  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -678,11 +684,11 @@ export default function Viewer() {
     const imageElement = containerRef.current?.querySelector("img");
     if (!imageElement) return;
 
-    // const displayedWidth = imageElement.clientWidth;
-    // const displayedHeight = imageElement.clientHeight;
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
 
-    // const scaleX = displayedWidth / imageSize.width;
-    // const scaleY = displayedHeight / imageSize.height;
+    const scaleX = displayedWidth / imageSize.width;
+    const scaleY = displayedHeight / imageSize.height;
 
     if (isTransforming && selectedShape && currentTool === "move") {
       const drawing = drawings.find((d) => d.id === selectedShape);
@@ -690,6 +696,7 @@ export default function Viewer() {
 
       const dx = x - transformOrigin.x;
       const dy = y - transformOrigin.y;
+      console.log(dx, dy);
 
       setDrawings(
         drawings.map((d) => {
@@ -918,32 +925,32 @@ export default function Viewer() {
     }
   };
 
-  // const handleSelectionSubmit = (
-  //   toothNumber: string,
-  //   pathology: string,
-  //   customPathology?: string
-  // ) => {
-  //   setDrawings((prev) => {
-  //     const lastDrawing = prev[prev.length - 1];
-  //     if (lastDrawing) {
-  //       const label =
-  //         pathology === "Other" && customPathology
-  //           ? `${toothNumber}  ${customPathology}`
-  //           : `${toothNumber}  ${pathology}`;
+  const handleSelectionSubmit = (
+    toothNumber: string,
+    pathology: string,
+    customPathology?: string
+  ) => {
+    setDrawings((prev) => {
+      const lastDrawing = prev[prev.length - 1];
+      if (lastDrawing) {
+        const label =
+          pathology === "Other" && customPathology
+            ? `${toothNumber}  ${customPathology}`
+            : `${toothNumber}  ${pathology}`;
 
-  //       const updatedDrawing = {
-  //         ...lastDrawing,
-  //         label,
-  //         toothNumber,
-  //         pathology,
-  //         customPathology,
-  //       };
-  //       return [...prev.slice(0, -1), updatedDrawing];
-  //     }
-  //     return prev;
-  //   });
-  //   setShowSelecting(false);
-  // };
+        const updatedDrawing = {
+          ...lastDrawing,
+          label,
+          toothNumber,
+          pathology,
+          customPathology,
+        };
+        return [...prev.slice(0, -1), updatedDrawing];
+      }
+      return prev;
+    });
+    setShowSelecting(false);
+  };
 
   const processApiResponse = (responseData: UploadResponse) => {
     const classMap = new Map<string, Annotation>();
@@ -1008,7 +1015,7 @@ export default function Viewer() {
     const scaleX = displayedWidth / imageSize.width;
     const scaleY = displayedHeight / imageSize.height;
 
-    annotations.forEach((annotation, _annIndex) => {
+    annotations.forEach((annotation, annIndex) => {
       annotation.roi_xyxy.forEach((coord) => {
         if (!coord.visible) return;
 
@@ -1139,7 +1146,7 @@ export default function Viewer() {
       tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
 
       if (isAnnotationEnabled) {
-        annotations.forEach((annotation, _annIndex) => {
+        annotations.forEach((annotation, annIndex) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
@@ -1506,12 +1513,13 @@ export default function Viewer() {
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
-                  className={`p-2 text-xs ${buttonHoverColor} rounded-full`}
+                  className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
                   onClick={() =>
                     setCheckType(checkType === "qc" ? "path" : "qc")
                   }
                 >
-                  Switch to {checkType === "qc" ? "Pathology" : "QC"}
+                  <span className="max-sm:hidden">Switch to</span>
+                  <span>{checkType === "qc" ? "Pathology" : "QC"}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent
@@ -1561,7 +1569,7 @@ export default function Viewer() {
             </Tooltip>
           </TooltipProvider>
 
-          {/* <TooltipProvider delayDuration={200}>
+          <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button className={`p-2 ${buttonHoverColor} rounded-full`}>
@@ -1591,12 +1599,12 @@ export default function Viewer() {
                 Open Settings
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider> */}
+          </TooltipProvider>
         </div>
       </div>
 
       <div
-        className={`flex items-center p-1 gap-1 ${barBgColor} ${borderColor} border-b overflow-x-auto`}
+        className={`flex items-center p-1 gap-1 ${barBgColor} ${borderColor} border-b overflow-x-auto scrollbar-hide`}
       >
         <ToolButton
           icon={<Undo size={16} />}
@@ -1672,7 +1680,7 @@ export default function Viewer() {
             setIsTransforming(false);
           }}
         />
-        {/* <ToolButton icon={<Ruler size={16} />} label="Measure" theme={theme} /> */}
+        <ToolButton icon={<Ruler size={16} />} label="Measure" theme={theme} />
         <div className={`h-6 border-l ${borderColor} mx-1`}></div>
         <ToolButton
           icon={<Download size={16} />}
@@ -1712,21 +1720,44 @@ export default function Viewer() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
-          {/* <TooltipProvider delayDuration={200}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button className={`p-2 rounded-full ${buttonHoverColor}`}>
-                  <Layers size={20} />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent
-                side="right"
-                className="px-3 py-1.5 text-sm font-medium shadow-lg"
-              >
-                Layer Management
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <HoverCard>
+      <HoverCardTrigger>
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button className={`p-2 rounded-full ${buttonHoverColor}`}>
+                <Layers size={20} />
+              </button>
+            </TooltipTrigger>
+            {/* <TooltipContent
+              side="right"
+              className="px-3 py-1.5 text-sm font-medium shadow-lg"
+            >
+              Layer Management
+            </TooltipContent> */}
+          </Tooltip>
+        </TooltipProvider>
+      </HoverCardTrigger>
+
+      {/* Desktop hover card (right side) */}
+      <HoverCardContent
+        side="right"
+        sideOffset={8}
+        className="hidden md:block border-none font-poppins  text-xs bg-white shadow-2xl"
+      >
+        The React Framework – created and maintained by @vercel.
+      </HoverCardContent>
+
+      {/* Mobile hover card (bottom side) */}
+      <HoverCardContent
+        side="bottom"
+        sideOffset={8}
+        className="block md:hidden border-none font-poppins  text-xs bg-white shadow-2xl"
+      >
+        The React Framework – created and maintained by @vercel.
+      </HoverCardContent>
+    </HoverCard>
+
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
@@ -1756,10 +1787,10 @@ export default function Viewer() {
                 Search Features
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider> */}
+          </TooltipProvider>
         </div>
 
-        <div className="flex-1 relative overflow-hidden">
+        <div className="flex-  relative overflow-hidden" style={{ width: "calc(100% - 4.5rem)" }}>
           {isLoading && (
             <div
               className={`absolute z-50 inset-0 flex items-center justify-center ${bgColor} bg-opacity-50`}
@@ -1813,14 +1844,14 @@ export default function Viewer() {
             ) : (
               <>
                 <input {...getInputProps()} />
-                <div className="flex flex-col items-center justify-center">
+                <div className="flex flex-col  items-center justify-center">
                   <MdOutlineCloudUpload
                     size={64}
                     className={
                       theme === "dark" ? "text-zinc-600" : "text-gray-400"
                     }
                   />
-                  <p className={`text-sm ${secondaryTextColor}`}>
+                  <p className={`max-sm:text-xs text-sm ${secondaryTextColor}`}>
                     {isDragActive
                       ? "Drop the image here ..."
                       : "Drag and drop an image here, or click to select a file"}
@@ -1832,8 +1863,8 @@ export default function Viewer() {
         </div>
 
         <div
-          className={`transition-all duration-300 ease-in-out ${
-            infoPanelOpen ? "w-80" : "w-8"
+          className={`transition-all duration-300 fixed right-0 h-svh ease-in-out ${
+            infoPanelOpen ? "max-[400px]:w-full w-80" : "w-8"
           } ${panelBgColor} ${borderColor} border-l flex flex-col`}
         >
           <button
@@ -1848,7 +1879,7 @@ export default function Viewer() {
           </button>
 
           {infoPanelOpen && (
-            <div className="p-3 flex-1 overflow-y-auto">
+            <div className="p-3 flex-1 overflow-y-auto scrollbar-hide">
               <h3 className="font-medium mb-3">Annotations</h3>
 
               <Tabs defaultValue="OPG" className="w-full">

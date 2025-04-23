@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -94,10 +94,9 @@ export default function LayerViewer() {
     | "measure"
   >("select");
   const [isLoading, setIsLoading] = useState<boolean[]>([false]);
-  const [imageSize, setImageSize] = useState<{ width: number; height: number }>({
-    width: 0,
-    height: 0,
-  });
+  const [imageSizes, setImageSizes] = useState<
+    { width: number; height: number }[]
+  >([{ width: 0, height: 0 }]);
 
   const [layers, setLayers] = useState<Layer[]>([
     {
@@ -112,46 +111,10 @@ export default function LayerViewer() {
     },
   ]);
 
-  const canvasRef0 = useRef<HTMLCanvasElement>(null);
-  const containerRef0 = useRef<HTMLDivElement>(null);
-  const canvasRef1 = useRef<HTMLCanvasElement>(null);
-  const containerRef1 = useRef<HTMLDivElement>(null);
-  const canvasRef2 = useRef<HTMLCanvasElement>(null);
-  const containerRef2 = useRef<HTMLDivElement>(null);
-  const canvasRef3 = useRef<HTMLCanvasElement>(null);
-  const containerRef3 = useRef<HTMLDivElement>(null);
-  const canvasRef4 = useRef<HTMLCanvasElement>(null);
-  const containerRef4 = useRef<HTMLDivElement>(null);
-  const canvasRef5 = useRef<HTMLCanvasElement>(null);
-  const containerRef5 = useRef<HTMLDivElement>(null);
-  const canvasRefFullScreen = useRef<HTMLCanvasElement>(null);
-  const containerRefFullScreen = useRef<HTMLDivElement>(null);
-  
-
   const [fullScreenLayer, setFullScreenLayer] = useState<Layer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
   const [isPolygonDrawing, setIsPolygonDrawing] = useState(false);
-
-  // Manage refs dynamically using a Map
-  const canvasRefs = useRef<Map<number, React.RefObject<HTMLCanvasElement>>>(
-    new Map()
-  );
-  const containerRefs = useRef<Map<number, React.RefObject<HTMLDivElement>>>(
-    new Map()
-  );
-
-  // Initialize refs for new layers
-  useEffect(() => {
-    layers.forEach((layer) => {
-      if (!canvasRefs.current.has(layer.id)) {
-        canvasRefs.current.set(layer.id, layer.canvasRef);
-      }
-      if (!containerRefs.current.has(layer.id)) {
-        containerRefs.current.set(layer.id, layer.containerRef);
-      }
-    });
-  }, [layers]);
 
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
@@ -172,10 +135,17 @@ export default function LayerViewer() {
           : layer
       )
     );
-    setImageSize({ width: 0, height: 0 });
+    setImageSizes((prev) =>
+      prev.map((size, index) =>
+        layers[index].id === layerId ? { width: 0, height: 0 } : size
+      )
+    );
     setIsDrawing(false);
     setIsPolygonDrawing(false);
     setCurrentPoints([]);
+    if (fullScreenLayer?.id === layerId) {
+      setFullScreenLayer(null);
+    }
   };
 
   const handleUndo = () => {
@@ -193,7 +163,7 @@ export default function LayerViewer() {
   };
 
   const handleUpload = async () => {
-    const layer = layers.find((l) => l.id === selectedLayer);
+    const layer = layers[selectedLayer];
     if (!layer?.file) return;
 
     setIsLoading((prev) => {
@@ -279,7 +249,12 @@ export default function LayerViewer() {
     );
   };
 
-  const onDrop = useCallback(
+    useEffect(() => {
+    console.log("Layers:", layers);
+    console.log("Image Sizes:", imageSizes);
+  }, [layers, imageSizes]);
+
+    const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       try {
         const file = acceptedFiles[0];
@@ -287,19 +262,27 @@ export default function LayerViewer() {
           toast.error("No file selected");
           return;
         }
-
+  
         if (!file.type.startsWith("image/")) {
           toast.error("Please upload an image file");
           return;
         }
-
+  
         const img = new Image();
         img.onload = () => {
-          setImageSize({
-            width: img.width,
-            height: img.height,
-          });
-
+          // Update imageSizes safely
+          setImageSizes((prev) =>
+            prev.map((size, index) => {
+              const layer = layers[index];
+              if (!layer) return size; // Fallback for undefined layers
+  
+              return layer.id === selectedLayer
+                ? { width: img.width, height: img.height }
+                : size;
+            })
+          );
+  
+          // Update layers with the new file
           setLayers((prev) =>
             prev.map((layer) =>
               layer.id === selectedLayer
@@ -315,18 +298,18 @@ export default function LayerViewer() {
             )
           );
         };
-
+  
         img.onerror = () => {
           toast.error("Failed to load image");
         };
-
+  
         img.src = URL.createObjectURL(file);
       } catch (error) {
         console.error("Upload error:", error);
         toast.error("Failed to upload image");
       }
     },
-    [selectedLayer]
+    [selectedLayer, layers]
   );
 
   const { getRootProps, getInputProps } = useDropzone({
@@ -415,148 +398,248 @@ export default function LayerViewer() {
     }
   };
 
-  const drawAnnotations = useCallback((layerId?:number) => {
-    const layer = layerId?layers.find((l) => l.id === layerId) : fullScreenLayer || layers.find((l) => l.id === selectedLayer);
-    const canvas = canvasRefs.current.get(layer?.id || 0)?.current;
-    const container = containerRefs.current.get(layer?.id || 0)?.current;
-    if (!canvas || !container || !imageSize.width || !imageSize.height) return;
+  const drawAnnotations = useCallback(
+    (layerId?: number) => {
+      const layersToDraw =
+        layerId !== undefined
+          ? [layers.find((l) => l.id === layerId)].filter(
+              (l): l is Layer => l !== undefined
+            )
+          : layers;
 
-    const imageElement = container.querySelector("img");
-    if (!imageElement) return;
+      layersToDraw.forEach((layer) => {
+        const canvas = layer.canvasRef.current;
+        const container = layer.containerRef.current;
+        const layerIndex = layers.findIndex((l) => l.id === layer.id);
+        const imageSize = imageSizes[layerIndex];
 
-    const displayedWidth = imageElement.clientWidth;
-    const displayedHeight = imageElement.clientHeight;
+        if (
+          !canvas ||
+          !container ||
+          !imageSize ||
+          !imageSize.width ||
+          !imageSize.height
+        )
+          return;
 
-    // Set canvas pixel dimensions to match displayed image size
-    canvas.width = displayedWidth;
-    canvas.height = displayedHeight;
-    canvas.style.width = `${displayedWidth}px`;
-    canvas.style.height = `${displayedHeight}px`;
+        const imageElement = container.querySelector("img");
+        if (!imageElement) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+        const displayedWidth = imageElement.getBoundingClientRect().width;
+        const displayedHeight = imageElement.getBoundingClientRect().height;
 
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Set canvas dimensions with device pixel ratio for crisp rendering
+        canvas.width = displayedWidth * window.devicePixelRatio;
+        canvas.height = displayedHeight * window.devicePixelRatio;
+        canvas.style.width = `${displayedWidth}px`;
+        canvas.style.height = `${displayedHeight}px`;
 
-    if (!isAnnotationEnabled) return;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) return;
 
-    const scaleX = displayedWidth / imageSize.width;
-    const scaleY = displayedHeight / imageSize.height;
+        ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        ctx.clearRect(0, 0, displayedWidth, displayedHeight);
 
-    layer?.annotations?.forEach((annotation) => {
-      annotation.roi_xyxy.forEach((coord) => {
-        if (!coord.visible) return;
+        if (!isAnnotationEnabled) return;
 
-        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+        const scaleX = displayedWidth / imageSize.width;
+        const scaleY = displayedHeight / imageSize.height;
+
+        layer.annotations?.forEach((annotation) => {
+          annotation.roi_xyxy.forEach((coord) => {
+            if (!coord.visible) return;
+
+            if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+              ctx.beginPath();
+              ctx.fillStyle =
+                coord.showBackground && coord.bgColor
+                  ? coord.bgColor
+                  : "transparent";
+              ctx.strokeStyle =
+                coord.showStroke && coord.strokeColor
+                  ? coord.strokeColor
+                  : "transparent";
+              ctx.lineWidth = 0.8;
+
+              ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
+              for (let i = 1; i < coord.poly.length; i++) {
+                ctx.lineTo(coord.poly[i][0] * scaleX, coord.poly[i][1] * scaleY);
+              }
+              ctx.closePath();
+              if (coord.showBackground) ctx.fill();
+              if (coord.showStroke) ctx.stroke();
+
+              if (coord.showLabel) {
+                const label = `${coord.label}. ${annotation.class}`.trim();
+                if (label) {
+                  ctx.font = "12px Poppins";
+                  const textMetrics = ctx.measureText(label);
+                  ctx.fillStyle =
+                    theme === "dark"
+                      ? "rgba(0, 0, 0, 0.7)"
+                      : "rgba(0, 0, 0, 0.7)";
+                  ctx.fillRect(
+                    coord.poly[0][0] * scaleX,
+                    coord.poly[0][1] * scaleY - 20,
+                    textMetrics.width + 10,
+                    20
+                  );
+                  ctx.fillStyle = "#FFFFFF";
+                  ctx.fillText(
+                    label,
+                    coord.poly[0][0] * scaleX + 5,
+                    coord.poly[0][1] * scaleY - 5
+                  );
+                }
+              }
+            } else {
+              const [x1, y1, x2, y2] = coord.coordinates;
+              const scaledX1 = x1 * scaleX;
+              const scaledY1 = y1 * scaleY;
+              const scaledX2 = x2 * scaleX;
+              const scaledY2 = y2 * scaleY;
+
+              if (coord.showBackground && coord.bgColor) {
+                ctx.fillStyle = coord.bgColor;
+                ctx.fillRect(
+                  scaledX1,
+                  scaledY1,
+                  scaledX2 - scaledX1,
+                  scaledY2 - scaledY1
+                );
+              }
+
+              if (coord.showStroke && coord.strokeColor) {
+                ctx.strokeStyle = coord.strokeColor;
+                ctx.lineWidth = 2;
+                ctx.strokeRect(
+                  scaledX1,
+                  scaledY1,
+                  scaledX2 - scaledX1,
+                  scaledY2 - scaledY1
+                );
+              }
+
+              if (coord.showLabel) {
+                const label = `${coord.label} ${annotation.class}`.trim();
+                if (label) {
+                  ctx.font = "12px Poppins";
+                  const textMetrics = ctx.measureText(label);
+                  ctx.fillStyle =
+                    theme === "dark"
+                      ? "rgba(0, 0, 0, 0.7)"
+                      : "rgba(0, 0, 0, 0.7)";
+                  ctx.fillRect(
+                    scaledX1,
+                    scaledY1 - 20,
+                    textMetrics.width + 10,
+                    20
+                  );
+                  ctx.fillStyle = "#FFFFFF";
+                  ctx.fillText(label, scaledX1 + 5, scaledY1 - 5);
+                }
+              }
+            }
+          });
+        });
+
+        layer.drawings.forEach((drawing) =>
+          drawShape(ctx, drawing, scaleX, scaleY)
+        );
+
+        // Draw current drawing preview for the active layer
+        if (
+          (isDrawing || isPolygonDrawing) &&
+          currentPoints.length >= 2 &&
+          layer.id === (fullScreenLayer ? fullScreenLayer.id : selectedLayer)
+        ) {
           ctx.beginPath();
-          ctx.fillStyle =
-            coord.showBackground && coord.bgColor
-              ? coord.bgColor
-              : "transparent";
-          ctx.strokeStyle =
-            coord.showStroke && coord.strokeColor
-              ? coord.strokeColor
-              : "transparent";
-          ctx.lineWidth = 0.8;
+          ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+          ctx.lineWidth = 1;
 
-          ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
-          for (let i = 1; i < coord.poly.length; i++) {
-            ctx.lineTo(coord.poly[i][0] * scaleX, coord.poly[i][1] * scaleY);
-          }
-          ctx.closePath();
-          if (coord.showBackground) ctx.fill();
-          if (coord.showStroke) ctx.stroke();
-
-          if (coord.showLabel) {
-            const label = `${coord.label}. ${annotation.class}`.trim();
-            if (label) {
-              ctx.font = "12px Poppins";
-              const textMetrics = ctx.measureText(label);
-              ctx.fillStyle =
-                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
-              ctx.fillRect(
-                coord.poly[0][0] * scaleX,
-                coord.poly[0][1] * scaleY - 20,
-                textMetrics.width + 10,
-                20
-              );
-              ctx.fillStyle = "#FFFFFF";
-              ctx.fillText(
-                label,
-                coord.poly[0][0] * scaleX + 5,
-                coord.poly[0][1] * scaleY - 5
-              );
-            }
-          }
-        } else {
-          const [x1, y1, x2, y2] = coord.coordinates;
-          const scaledX1 = x1 * scaleX;
-          const scaledY1 = y1 * scaleY;
-          const scaledX2 = x2 * scaleX;
-          const scaledY2 = y2 * scaleY;
-
-          if (coord.showBackground && coord.bgColor) {
-            ctx.fillStyle = coord.bgColor;
-            ctx.fillRect(
-              scaledX1,
-              scaledY1,
-              scaledX2 - scaledX1,
-              scaledY2 - scaledY1
-            );
-          }
-
-          if (coord.showStroke && coord.strokeColor) {
-            ctx.strokeStyle = coord.strokeColor;
-            ctx.lineWidth = 2;
+          if (currentTool === "rectangle") {
             ctx.strokeRect(
-              scaledX1,
-              scaledY1,
-              scaledX2 - scaledX1,
-              scaledY2 - scaledY1
+              currentPoints[0] * scaleX,
+              currentPoints[1] * scaleY,
+              (currentPoints[2] - currentPoints[0]) * scaleX,
+              (currentPoints[3] - currentPoints[1]) * scaleY
             );
-          }
-
-          if (coord.showLabel) {
-            const label = `${coord.label} ${annotation.class}`.trim();
-            if (label) {
-              ctx.font = "12px Poppins";
-              const textMetrics = ctx.measureText(label);
-              ctx.fillStyle =
-                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
-              ctx.fillRect(scaledX1, scaledY1 - 20, textMetrics.width + 10, 20);
-              ctx.fillStyle = "#FFFFFF";
-              ctx.fillText(label, scaledX1 + 5, scaledY1 - 5);
+          } else if (currentTool === "line") {
+            ctx.moveTo(currentPoints[0] * scaleX, currentPoints[1] * scaleY);
+            ctx.lineTo(currentPoints[2] * scaleX, currentPoints[3] * scaleY);
+            ctx.stroke();
+          } else if (currentTool === "polygon") {
+            ctx.moveTo(currentPoints[0] * scaleX, currentPoints[1] * scaleY);
+            for (let i = 2; i < currentPoints.length; i += 2) {
+              ctx.lineTo(currentPoints[i] * scaleX, currentPoints[i + 1] * scaleY);
             }
+            ctx.stroke();
           }
         }
       });
+    },
+    [
+      layers,
+      selectedLayer,
+      isAnnotationEnabled,
+      imageSizes,
+      checkType,
+      theme,
+      fullScreenLayer,
+      isDrawing,
+      isPolygonDrawing,
+      currentPoints,
+      currentTool,
+    ]
+  );
+
+  useEffect(() => {
+    const resizeObserver = new ResizeObserver(() => {
+      requestAnimationFrame(() => {
+        drawAnnotations(); // Redraw all layers
+      });
     });
 
-    layer?.drawings.forEach((drawing) =>
-      drawShape(ctx, drawing, scaleX, scaleY)
-    );
-  }, [
-    layers,
-    selectedLayer,
-    isAnnotationEnabled,
-    imageSize,
-    checkType,
-    theme,
-    fullScreenLayer,
-  ]);
+    layers.forEach((layer) => {
+      if (layer.containerRef.current) {
+        resizeObserver.observe(layer.containerRef.current);
+        const img = layer.containerRef.current.querySelector("img");
+        if (img) {
+          resizeObserver.observe(img);
+        }
+      }
+    });
 
-  const addLayer = () => {
+    return () => {
+      layers.forEach((layer) => {
+        if (layer.containerRef.current) {
+          resizeObserver.unobserve(layer.containerRef.current);
+          const img = layer.containerRef.current.querySelector("img");
+          if (img) {
+            resizeObserver.unobserve(img);
+          }
+        }
+      });
+      resizeObserver.disconnect();
+    };
+  }, [layers, drawAnnotations]);
+
+  useEffect(() => {
+    // Redraw all layers when imageSizes, layers, or fullScreenLayer change
+    drawAnnotations();
+  }, [imageSizes, layers, fullScreenLayer, drawAnnotations]);
+
+    const addLayer = () => {
     setLayers((prevLayers) => {
       if (prevLayers.length >= 6) {
         toast.error("Maximum of 6 layers allowed");
         return prevLayers;
       }
-
-
+  
       const lastId =
         prevLayers.length > 0 ? prevLayers[prevLayers.length - 1].id : 0;
       const newId = lastId + 1;
-
+  
       const newLayer: Layer = {
         id: newId,
         file: null,
@@ -567,9 +650,37 @@ export default function LayerViewer() {
         canvasRef: React.createRef<HTMLCanvasElement>(),
         containerRef: React.createRef<HTMLDivElement>(),
       };
-
+  
+      // Add a new entry to imageSizes for the new layer
+      setImageSizes((prev) => [...prev, { width: 0, height: 0 }]);
+  
       return [...prevLayers, newLayer];
     });
+  };
+  
+  const handleDeleteLayer = (id: number) => {
+    if (layers.length === 1) {
+      toast.error("Cannot delete the last layer");
+      return;
+    }
+  
+    setLayers((prev) => prev.filter((layer) => layer.id !== id));
+  
+    // Remove the corresponding entry from imageSizes
+    setImageSizes((prev) =>
+      prev.filter((_, index) => layers[index].id !== id)
+    );
+  
+    if (selectedLayer === id) {
+      setSelectedLayer(layers[0].id);
+    }
+    if (fullScreenLayer?.id === id) {
+      setFullScreenLayer(null);
+    }
+  };
+
+  const handleToggleFullscreen = (layer: Layer) => {
+    setFullScreenLayer(fullScreenLayer ? null : layer);
   };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -579,20 +690,23 @@ export default function LayerViewer() {
     )
       return;
 
-    const canvas = canvasRefs.current.get(selectedLayer)?.current;
+    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const imageElement = containerRefs.current
-      .get(selectedLayer)
-      ?.current?.querySelector("img");
+    const imageElement = targetLayer.containerRef.current?.querySelector("img");
     if (!imageElement) return;
 
-    const displayedWidth = imageElement.clientWidth;
-    const displayedHeight = imageElement.clientHeight;
+    const displayedWidth = imageElement.getBoundingClientRect().width;
+    const displayedHeight = imageElement.getBoundingClientRect().height;
+    const layerIndex = layers.findIndex((l) => l.id === targetLayer.id);
+    const imageSize = imageSizes[layerIndex];
+    if (!imageSize || !imageSize.width || !imageSize.height) return;
+
     const scaleX = imageSize.width / displayedWidth;
     const scaleY = imageSize.height / displayedHeight;
 
@@ -606,6 +720,29 @@ export default function LayerViewer() {
       } else {
         setCurrentPoints((prev) => [...prev, scaledX, scaledY]);
       }
+    } else if (currentTool === "point") {
+      const newDrawing: Drawing = {
+        type: "point",
+        points: [scaledX, scaledY],
+        visible: true,
+        strokeColor: "rgb(255,0,0)",
+        bgColor: "rgba(255,0,0,0.2)",
+        showStroke: true,
+        showBackground: true,
+        showLabel: false,
+      };
+
+      setLayers((prev) =>
+        prev.map((layer) =>
+          layer.id === targetLayer.id
+            ? {
+                ...layer,
+                drawings: [...layer.drawings, newDrawing],
+                drawingHistory: [...layer.drawingHistory, layer.drawings],
+              }
+            : layer
+        )
+      );
     } else {
       setIsDrawing(true);
       setCurrentPoints([scaledX, scaledY]);
@@ -615,98 +752,53 @@ export default function LayerViewer() {
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (
       !isAnnotationEnabled ||
-      !isDrawing ||
-      !["rectangle", "line"].includes(currentTool)
+      (!isDrawing && !isPolygonDrawing) ||
+      !["rectangle", "line", "polygon"].includes(currentTool)
     )
       return;
 
-    const canvas = canvasRefs.current.get(selectedLayer)?.current;
+    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
 
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const imageElement = containerRefs.current
-      .get(selectedLayer)
-      ?.current?.querySelector("img");
+    const imageElement = targetLayer.containerRef.current?.querySelector("img");
     if (!imageElement) return;
 
-    const displayedWidth = imageElement.clientWidth;
-    const displayedHeight = imageElement.clientHeight;
+    const displayedWidth = imageElement.getBoundingClientRect().width;
+    const displayedHeight = imageElement.getBoundingClientRect().height;
+    const layerIndex = layers.findIndex((l) => l.id === targetLayer.id);
+    const imageSize = imageSizes[layerIndex];
+    if (!imageSize || !imageSize.width || !imageSize.height) return;
+
     const scaleX = imageSize.width / displayedWidth;
     const scaleY = imageSize.height / displayedHeight;
 
     const scaledX = x * scaleX;
     const scaledY = y * scaleY;
 
-    setCurrentPoints((prev) => [...prev.slice(0, 2), scaledX, scaledY]);
-    drawAnnotations();
-
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    ctx.beginPath();
-    ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
-    ctx.lineWidth = 1;
-
-    if (currentTool === "rectangle") {
-      ctx.strokeRect(
-        currentPoints[0] / scaleX,
-        currentPoints[1] / scaleY,
-        (scaledX - currentPoints[0]) / scaleX,
-        (scaledY - currentPoints[1]) / scaleY
-      );
-    } else if (currentTool === "line") {
-      ctx.moveTo(currentPoints[0] / scaleX, currentPoints[1] / scaleY);
-      ctx.lineTo(scaledX / scaleX, scaledY / scaleY);
-      ctx.stroke();
+    if (currentTool !== "polygon") {
+      setCurrentPoints((prev) => [...prev.slice(0, 2), scaledX, scaledY]);
     }
-  };
 
-  const handleDeleteLayer = (id: number) => {
-    setLayers((prev) => prev.filter((layer) => layer.id !== id));
-    canvasRefs.current.delete(id);
-    containerRefs.current.delete(id);
-    if (selectedLayer === id && layers.length > 1) {
-      setSelectedLayer(layers[0].id);
-    }
+    drawAnnotations(targetLayer.id);
   };
 
   const endDrawing = () => {
     if (!isDrawing && !isPolygonDrawing) return;
 
+    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const targetLayerId = targetLayer.id;
+
     if (currentTool === "polygon" && isPolygonDrawing) {
-      if (currentPoints.length >= 6) {
-        setLayers((prev) =>
-          prev.map((layer) =>
-            layer.id === selectedLayer
-              ? {
-                  ...layer,
-                  drawings: [
-                    ...layer.drawings,
-                    {
-                      type: "polygon",
-                      points: currentPoints,
-                      visible: true,
-                      strokeColor: "rgb(255,0,0)",
-                      bgColor: "rgba(255,0,0,0.2)",
-                      showStroke: true,
-                      showBackground: true,
-                      showLabel: false,
-                    },
-                  ],
-                  drawingHistory: [...layer.drawingHistory, layer.drawings],
-                }
-              : layer
-          )
-        );
-      }
-      setIsPolygonDrawing(false);
-      setCurrentPoints([]);
+      // Polygon drawing is completed via double-click
+      return;
     } else if (isDrawing) {
       const newDrawing: Drawing = {
-        type: currentTool as "rectangle" | "line" | "point",
+        type: currentTool as "rectangle" | "line",
         points: currentPoints,
         visible: true,
         strokeColor: "rgb(255,0,0)",
@@ -718,7 +810,7 @@ export default function LayerViewer() {
 
       setLayers((prev) =>
         prev.map((layer) =>
-          layer.id === selectedLayer
+          layer.id === targetLayerId
             ? {
                 ...layer,
                 drawings: [...layer.drawings, newDrawing],
@@ -731,15 +823,57 @@ export default function LayerViewer() {
       setCurrentPoints([]);
     }
 
-    drawAnnotations();
+    drawAnnotations(targetLayerId);
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isPolygonDrawing || currentTool !== "polygon") return;
+
+    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const targetLayerId = targetLayer.id;
+
+    if (currentPoints.length >= 6) {
+      // Ensure at least 3 points for a polygon
+      setLayers((prev) =>
+        prev.map((layer) =>
+          layer.id === targetLayerId
+            ? {
+                ...layer,
+                drawings: [
+                  ...layer.drawings,
+                  {
+                    type: "polygon",
+                    points: currentPoints,
+                    visible: true,
+                    strokeColor: "rgb(255,0,0)",
+                    bgColor: "rgba(255,0,0,0.2)",
+                    showStroke: true,
+                    showBackground: true,
+                    showLabel: false,
+                  },
+                ],
+                drawingHistory: [...layer.drawingHistory, layer.drawings],
+              }
+            : layer
+        )
+      );
+    }
+
+    setIsPolygonDrawing(false);
+    setCurrentPoints([]);
+    drawAnnotations(targetLayerId);
   };
 
   const handleDownloadWithAnnotations = () => {
-    const layer = layers.find((l) => l.id === selectedLayer);
+    const layer = fullScreenLayer || layers[selectedLayer];
     if (!layer?.file) {
       toast.error("No image to download");
       return;
     }
+
+    const layerIndex = layers.findIndex((l) => l.id === layer.id);
+    const imageSize = imageSizes[layerIndex];
+    if (!imageSize || !imageSize.width || !imageSize.height) return;
 
     const tempCanvas = document.createElement("canvas");
     const tempCtx = tempCanvas.getContext("2d");
@@ -750,13 +884,11 @@ export default function LayerViewer() {
 
     const img = new Image();
     img.onload = () => {
-      const displayedImage = containerRefs.current
-        .get(selectedLayer)
-        ?.current?.querySelector("img");
+      const displayedImage = layer.containerRef?.current?.querySelector("img");
       if (!displayedImage) return;
 
-      const displayedWidth = displayedImage.clientWidth;
-      const displayedHeight = displayedImage.clientHeight;
+      const displayedWidth = displayedImage.getBoundingClientRect().width;
+      const displayedHeight = displayedImage.getBoundingClientRect().height;
       const scaleX = imageSize.width / displayedWidth;
       const scaleY = imageSize.height / displayedHeight;
 
@@ -836,7 +968,7 @@ export default function LayerViewer() {
         });
 
         layer.drawings.forEach((drawing) =>
-          drawShape(tempCtx, drawing, scaleX, scaleY)
+          drawShape(tempCtx, drawing, 1, 1) // Use 1:1 scale for download
         );
       }
 
@@ -859,29 +991,20 @@ export default function LayerViewer() {
   };
 
   useEffect(() => {
-    drawAnnotations();
-  }, [drawAnnotations]);
-
-  useEffect(() => {
-    const canvas = canvasRefs.current.get(selectedLayer)?.current;
+    const canvas = fullScreenLayer
+      ? fullScreenLayer.canvasRef.current
+      : layers[selectedLayer]?.canvasRef?.current;
     if (!canvas) return;
 
     canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
-  }, [currentTool, selectedLayer]);
+  }, [currentTool, layers, selectedLayer, fullScreenLayer]);
 
   useEffect(() => {
-    const layer = layers.find((l) => l.id === selectedLayer);
+    const layer = layers[selectedLayer];
     if (layer?.file && !layer.response) {
       handleUpload();
     }
   }, [layers, selectedLayer, checkType]);
-
-  // Redraw on window resize
-  useEffect(() => {
-    const handleResize = () => drawAnnotations();
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
-  }, [drawAnnotations]);
 
   const bgColor = theme === "dark" ? "bg-zinc-900" : "bg-gray-100";
   const borderColorForLoader =
@@ -1012,11 +1135,9 @@ export default function LayerViewer() {
                 side="right"
                 className="px-3 py-1.5 text-sm font-medium shadow-lg"
               >
-                {isAnnotationEnabled ? "Off" : "On"} Annotation
+                {isAnnotationEnabled ? "Disable" : "Enable"} Annotation
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
-          <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -1048,8 +1169,8 @@ export default function LayerViewer() {
               ></div>
             </div>
           )}
-          {fullScreenLayer && (
-            <div className={`w-full grid grid-cols-1`}>
+          {fullScreenLayer ? (
+            <div className="w-full grid grid-cols-1">
               <div key={fullScreenLayer.id} className="relative">
                 {!fullScreenLayer.file ? (
                   <div
@@ -1060,7 +1181,7 @@ export default function LayerViewer() {
                       theme === "dark" ? "border-zinc-700" : "border-gray-300"
                     }`}
                   >
-                    <input {...getInputProps()}/>
+                    <input {...getInputProps()} />
                     <MdOutlineCloudUpload size={64} className={iconColor} />
                     <p className={`${iconColor} text-sm text-center px-4`}>
                       Click or drag image to upload
@@ -1068,16 +1189,18 @@ export default function LayerViewer() {
                   </div>
                 ) : (
                   <div
-                    key={fullScreenLayer.id}
                     className="flex items-center justify-center h-full"
                     ref={fullScreenLayer.containerRef}
                   >
-                    <p
-                      className={`${iconColor} absolute top-0 right-0 p-2 cursor-pointer`}
-                      onClick={() => setFullScreenLayer(null)}
-                    >
-                      <Minimize strokeWidth={1.2} size={"20px"} />
-                    </p>
+                    <LayerOptions
+                      layer={fullScreenLayer}
+                      theme={theme}
+                      setFullScreenLayer={setFullScreenLayer}
+                      handleDeleteLayer={handleDeleteLayer}
+                      handleDeleteLayerImg={() =>
+                        handleRemoveImage(fullScreenLayer.id)
+                      }
+                    />
                     <div className="relative inline-block">
                       <img
                         src={URL.createObjectURL(fullScreenLayer.file)}
@@ -1092,9 +1215,10 @@ export default function LayerViewer() {
                         onMouseDown={startDrawing}
                         onMouseMove={draw}
                         onMouseUp={endDrawing}
+                        onDoubleClick={handleDoubleClick}
                         onMouseLeave={() => {
                           setIsDrawing(false);
-                          drawAnnotations();
+                          drawAnnotations(fullScreenLayer.id);
                         }}
                       />
                     </div>
@@ -1102,80 +1226,81 @@ export default function LayerViewer() {
                 )}
               </div>
             </div>
-          )}
-          <div
-            className={`w-full grid ${
-              layers.length >= 3
-                ? "xl:grid-cols-3 sm:grid-cols-2 grid-cols-1"
-                : layers.length === 2
-                ? "xl:grid-cols-2 sm:grid-cols-2 grid-cols-1"
-                : "grid-cols-1"
-            } ${fullScreenLayer && "hidden"}`}
-          >
-            {layers.map((layer) => (
-              <div key={layer.id} className="relative">
-                {layers.length !== 1 && (
-                  <LayerActionMenu
-                    layer={layer}
-                    theme={theme}
-                    handleDeleteLayer={handleDeleteLayer}
-                  />
-                )}
-                {!layer.file ? (
-                  <div
-                    {...getRootProps({
-                      onClick: () => setSelectedLayer(layer.id),
-                    })}
-                    className={`w-full h-full min-h-[300px] flex flex-col justify-center items-center border ${
-                      theme === "dark" ? "border-zinc-700" : "border-gray-200"
-                    }`}
-                  >
-                    <input {...getInputProps()} />
-                    <MdOutlineCloudUpload size={64} className={iconColor} />
-                    <p className={`${iconColor} text-sm text-center px-4`}>
-                      Click or drag image to upload
-                    </p>
-                  </div>
-                ) : (
-                  <div
-                    key={layer.id}
-                    className={`flex items-center justify-center h-full border ${
-                      theme === "dark" ? "border-zinc-700" : "border-gray-200"
-                    }`}
-                    ref={layer.containerRef}
-                  >
-                    <LayerOptions
+          ) : (
+            <div
+              className={`w-full grid ${
+                layers.length >= 3
+                  ? "xl:grid-cols-3 sm:grid-cols-2 grid-cols-1"
+                  : layers.length === 2
+                  ? "xl:grid-cols-2 sm:grid-cols-2 grid-cols-1"
+                  : "grid-cols-1"
+              }`}
+            >
+              {layers.map((layer) => (
+                <div key={layer.id} className="relative">
+                  {layers.length > 1 && (
+                    <LayerActionMenu
                       layer={layer}
                       theme={theme}
-                      setFullScreenLayer={setFullScreenLayer}
                       handleDeleteLayer={handleDeleteLayer}
-                      handleDeleteLayerImg={() => handleRemoveImage(layer.id)}
                     />
-                    <div className="relative inline-block">
-                      <img
-                        src={URL.createObjectURL(layer.file)}
-                        alt="Uploaded Scan"
-                        className="max-h-[90vh] max-w-full object-contain"
-                        style={{ width: "auto", height: "auto" }}
-                      />
-                      <canvas
-                        ref={layer.canvasRef}
-                        className="absolute top-0 left-0"
-                        // style={{ width: "100%", height: "100%" }}
-                        onMouseDown={startDrawing}
-                        onMouseMove={draw}
-                        onMouseUp={endDrawing}
-                        onMouseLeave={() => {
-                          setIsDrawing(false);
-                          drawAnnotations();
-                        }}
-                      />
+                  )}
+                  {!layer.file ? (
+                    <div
+                      {...getRootProps({
+                        onClick: () => setSelectedLayer(layer.id),
+                      })}
+                      className={`w-full h-full min-h-[300px] flex flex-col justify-center items-center border ${
+                        theme === "dark" ? "border-zinc-700" : "border-gray-200"
+                      }`}
+                    >
+                      <input {...getInputProps()} />
+                      <MdOutlineCloudUpload size={64} className={iconColor} />
+                      <p className={`${iconColor} text-sm text-center px-4`}>
+                        Click or drag image to upload
+                      </p>
                     </div>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+                  ) : (
+                    <div
+                      className={`flex items-center justify-center h-full border ${
+                        theme === "dark" ? "border-zinc-700" : "border-gray-200"
+                      }`}
+                      ref={layer.containerRef}
+                    >
+                      <LayerOptions
+                        layer={layer}
+                        theme={theme}
+                        setFullScreenLayer={setFullScreenLayer}
+                        handleDeleteLayer={handleDeleteLayer}
+                        handleDeleteLayerImg={() => handleRemoveImage(layer.id)}
+                      />
+                      <div className="relative inline-block">
+                        <img
+                          src={URL.createObjectURL(layer.file)}
+                          alt="Uploaded Scan"
+                          className="max-h-[90vh] max-w-full object-contain"
+                          style={{ width: "auto", height: "auto" }}
+                        />
+                        <canvas
+                          ref={layer.canvasRef}
+                          className="absolute top-0 left-0"
+                          style={{ width: "100%", height: "100%" }}
+                          onMouseDown={startDrawing}
+                          onMouseMove={draw}
+                          onMouseUp={endDrawing}
+                          onDoubleClick={handleDoubleClick}
+                          onMouseLeave={() => {
+                            setIsDrawing(false);
+                            drawAnnotations(layer.id);
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div
           className={`transition-all duration-300 z-30 fixed right-0 h-svh ease-in-out ${
@@ -1187,8 +1312,8 @@ export default function LayerViewer() {
             className={`p-2 ${buttonHoverColor} flex justify-center items-center h-10 border-b ${borderColor}`}
           >
             {infoPanelOpen ? (
-              <ChevronRight size={18} />
-            ) : (
+              <ChevronRight size={18} />)
+            : (
               <ChevronLeft size={18} />
             )}
           </button>

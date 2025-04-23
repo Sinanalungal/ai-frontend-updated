@@ -9,7 +9,17 @@ import {
   Fullscreen,
   Minimize,
   Layers,
+  Undo,
+  MousePointer,
+  Move,
+  SquarePen,
+  Square,
+  Minus,
+  Dot,
+  Download,
+  ImageMinus,
 } from "lucide-react";
+import { BsBoundingBoxCircles } from "react-icons/bs";
 import {
   Tooltip,
   TooltipContent,
@@ -26,7 +36,8 @@ import LayerActionMenu from "./LayerActionMenu";
 import { ToolBar } from "./Toolbar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RenderOPGAnnotationsList from "../Viewer/RenderOpgAnnotationsList";
-
+import RenderCustomAnnotationsList from "../Viewer/RenderCustomAnnotationsList";
+import { ToolButton } from "../Viewer/ToolButton";
 
 const SNAP_THRESHOLD = 10;
 
@@ -55,7 +66,12 @@ interface Drawing {
   bgColor: string;
   showStroke: boolean;
   showBackground: boolean;
-  label?: string;
+  label: string;
+  id: string;
+  transform?: { scale: number; rotation: number; translate: { x: number; y: number } };
+  toothNumber?: string;
+  pathology?: string;
+  customPathology?: string;
   showLabel: boolean;
 }
 
@@ -87,20 +103,10 @@ export default function LayerViewer() {
   const [checkType, setCheckType] = useState<"qc" | "path">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
   const [currentTool, setCurrentTool] = useState<
-    | "select"
-    | "move"
-    | "reshape"
-    | "rectangle"
-    | "line"
-    | "point"
-    | "polygon"
-    | "measure"
+    "select" | "move" | "reshape" | "rectangle" | "line" | "point" | "polygon" | "measure"
   >("select");
   const [isLoading, setIsLoading] = useState<boolean[]>([false]);
-  const [imageSizes, setImageSizes] = useState<
-    { width: number; height: number }[]
-  >([{ width: 0, height: 0 }]);
-
+  const [imageSizes, setImageSizes] = useState<{ width: number; height: number }[]>([{ width: 0, height: 0 }]);
   const [layers, setLayers] = useState<Layer[]>([
     {
       id: 0,
@@ -113,20 +119,27 @@ export default function LayerViewer() {
       containerRef: React.createRef<HTMLDivElement>(),
     },
   ]);
-
-  console.log(layers,"this si th elayers");
-  
-
   const [fullScreenLayer, setFullScreenLayer] = useState<Layer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
   const [isPolygonDrawing, setIsPolygonDrawing] = useState(false);
+  const [isTransforming, setIsTransforming] = useState(false);
+  const [selectedShape, setSelectedShape] = useState<string | null>(null);
+  const [transformOrigin, setTransformOrigin] = useState<{ x: number; y: number } | null>(null);
+  const [isDraggingPoint, setIsDraggingPoint] = useState(false);
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+  const [draggedPointOffset, setDraggedPointOffset] = useState<{ x: number; y: number } | null>(null);
+  const [showSelecting, setShowSelecting] = useState(false);
+  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
+  const [editingId, setEditingId] = useState<string | null>(null);
 
+  console.log(layers,'this si the layers');
+  
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-    const handleRemoveImage = (layerId: number) => {
+  const handleRemoveImage = (layerId: number) => {
     setLayers((prevLayers) => {
       const updatedLayers = prevLayers.map((layer) =>
         layer.id === layerId
@@ -140,24 +153,22 @@ export default function LayerViewer() {
             }
           : layer
       );
-  
-      // Update imageSizes based on the updated layers
+
       setImageSizes((prevSizes) =>
         prevSizes.map((size, index) => {
-          const layer = updatedLayers[index]; // Use the updated layers
-          if (!layer) return size; // Fallback for undefined layers
-  
+          const layer = updatedLayers[index];
+          if (!layer) return size;
           return layer.id === layerId ? { width: 0, height: 0 } : size;
         })
       );
-  
+
       return updatedLayers;
     });
-  
+
     setIsDrawing(false);
     setIsPolygonDrawing(false);
     setCurrentPoints([]);
-  
+
     if (fullScreenLayer?.id === layerId) {
       setFullScreenLayer(null);
     }
@@ -175,6 +186,9 @@ export default function LayerViewer() {
           : layer
       )
     );
+    if (showSelecting) {
+      setShowSelecting(false);
+    }
   };
 
   const handleUpload = async () => {
@@ -264,7 +278,6 @@ export default function LayerViewer() {
     );
   };
 
-  
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       try {
@@ -281,19 +294,16 @@ export default function LayerViewer() {
 
         const img = new Image();
         img.onload = () => {
-          // Update imageSizes safely
           setImageSizes((prev) =>
             prev.map((size, index) => {
               const layer = layers[index];
-              if (!layer) return size; // Fallback for undefined layers
-
+              if (!layer) return size;
               return layer.id === selectedLayer
                 ? { width: img.width, height: img.height }
                 : size;
             })
           );
 
-          // Update layers with the new file
           setLayers((prev) =>
             prev.map((layer) =>
               layer.id === selectedLayer
@@ -409,6 +419,296 @@ export default function LayerViewer() {
     }
   };
 
+  const findNearestPoint = (x: number, y: number, drawings: Drawing[]) => {
+    const threshold = 10;
+
+    for (const drawing of drawings) {
+      if (!drawing.visible) continue;
+
+      switch (drawing.type) {
+        case "rectangle": {
+          const points = [
+            [drawing.points[0], drawing.points[1]],
+            [drawing.points[2], drawing.points[1]],
+            [drawing.points[2], drawing.points[3]],
+            [drawing.points[0], drawing.points[3]],
+          ];
+
+          for (let i = 0; i < points.length; i++) {
+            const dx = points[i][0] - x;
+            const dy = points[i][1] - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+              return {
+                drawingId: drawing.id,
+                pointIndex: i,
+                originalX: points[i][0],
+                originalY: points[i][1],
+              };
+            }
+          }
+          break;
+        }
+        case "line": {
+          const points = [
+            [drawing.points[0], drawing.points[1]],
+            [drawing.points[2], drawing.points[3]],
+          ];
+
+          for (let i = 0; i < points.length; i++) {
+            const dx = points[i][0] - x;
+            const dy = points[i][1] - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+              return {
+                drawingId: drawing.id,
+                pointIndex: i,
+                originalX: points[i][0],
+                originalY: points[i][1],
+              };
+            }
+          }
+          break;
+        }
+        case "polygon": {
+          for (let i = 0; i < drawing.points.length; i += 2) {
+            const dx = drawing.points[i] - x;
+            const dy = drawing.points[i + 1] - y;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+
+            if (distance < threshold) {
+              return {
+                drawingId: drawing.id,
+                pointIndex: i / 2,
+                originalX: drawing.points[i],
+                originalY: drawing.points[i + 1],
+              };
+            }
+          }
+          break;
+        }
+      }
+    }
+    return null;
+  };
+
+  const isPointInPolygon = (x: number, y: number, points: number[]) => {
+    let vertices: number[][] = [];
+    for (let i = 0; i < points.length; i += 2) {
+      vertices.push([points[i], points[i + 1]]);
+    }
+
+    let inside = false;
+    for (let i = 0, j = vertices.length - 1; i < vertices.length; j = i++) {
+      const xi = vertices[i][0];
+      const yi = vertices[i][1];
+      const xj = vertices[j][0];
+      const yj = vertices[j][1];
+
+      if (yi > y !== yj > y && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) {
+        inside = !inside;
+      }
+    }
+    return inside;
+  };
+
+  const findShapeAtPoint = (
+    x: number,
+    y: number,
+    scaleX: number,
+    scaleY: number,
+    layer: Layer
+  ) => {
+    for (const annotation of layer.annotations || []) {
+      for (const coord of annotation.roi_xyxy) {
+        if (!coord.visible) continue;
+
+        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+          const scaledPoly = coord.poly.map(([px, py]) => [
+            px * scaleX,
+            py * scaleY,
+          ]);
+          if (isPointInPolygon(x, y, scaledPoly)) {
+            return {
+              type: "annotation",
+              className: annotation.class,
+              coordId: coord.id,
+            };
+          }
+        } else {
+          const [x1, y1, x2, y2] = coord.coordinates;
+          const scaledX1 = x1 * scaleX;
+          const scaledY1 = y1 * scaleY;
+          const scaledX2 = x2 * scaleX;
+          const scaledY2 = y2 * scaleY;
+
+          if (
+            x >= scaledX1 &&
+            x <= scaledX2 &&
+            y >= scaledY1 &&
+            y <= scaledY2
+          ) {
+            return {
+              type: "annotation",
+              className: annotation.class,
+              coordId: coord.id,
+            };
+          }
+        }
+      }
+    }
+
+    for (const drawing of layer.drawings) {
+      if (!drawing.visible) continue;
+
+      switch (drawing.type) {
+        case "rectangle": {
+          const [x1, y1, x2, y2] = drawing.points;
+          if (x >= x1 && x <= x2 && y >= y1 && y <= y2) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+        case "line": {
+          const [x1, y1, x2, y2] = drawing.points;
+          const distance = pointToLineDistance(x, y, x1, y1, x2, y2);
+          if (distance < 10) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+        case "polygon": {
+          if (isPointInPolygon(x, y, drawing.points)) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+        case "point": {
+          const [px, py] = drawing.points;
+          const distance = Math.sqrt((x - px) ** 2 + (y - py) ** 2);
+          if (distance < 10) {
+            return {
+              type: "drawing",
+              drawingId: drawing.id,
+            };
+          }
+          break;
+        }
+      }
+    }
+    return null;
+  };
+
+  const pointToLineDistance = (
+    x: number,
+    y: number,
+    x1: number,
+    y1: number,
+    x2: number,
+    y2: number
+  ) => {
+    const A = x - x1;
+    const B = y - y1;
+    const C = x2 - x1;
+    const D = y2 - y1;
+
+    const dot = A * C + B * D;
+    const len_sq = C * C + D * D;
+    const param = len_sq !== 0 ? dot / len_sq : -1;
+
+    let xx, yy;
+    if (param < 0) {
+      xx = x1;
+      yy = y1;
+    } else if (param > 1) {
+      xx = x2;
+      yy = y2;
+    } else {
+      xx = x1 + param * C;
+      yy = y1 + param * D;
+    }
+
+    const dx = x - xx;
+    const dy = y - yy;
+    return Math.sqrt(dx * dx + dy * dy);
+  };
+
+  const handleShapeClick = (
+    e: React.MouseEvent<HTMLCanvasElement>,
+    targetLayer: Layer
+  ) => {
+    const canvas = targetLayer.canvasRef.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const imageElement = targetLayer.containerRef.current?.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.getBoundingClientRect().width;
+    const displayedHeight = imageElement.getBoundingClientRect().height;
+    const layerIndex = layers.findIndex((l) => l.id === targetLayer.id);
+    const imageSize = imageSizes[layerIndex];
+    if (!imageSize || !imageSize.width || !imageSize.height) return;
+
+    const scaleX = displayedWidth / imageSize.width;
+    const scaleY = displayedHeight / imageSize.height;
+
+    const shape = findShapeAtPoint(x, y, scaleX, scaleY, targetLayer);
+
+    if (shape) {
+      if (shape.type === "annotation") {
+        setLayers((prev) =>
+          prev.map((layer) =>
+            layer.id === targetLayer.id
+              ? {
+                  ...layer,
+                  annotations: layer.annotations?.map((annotation) => {
+                    if (annotation.class !== shape.className) return annotation;
+                    return {
+                      ...annotation,
+                      roi_xyxy: annotation.roi_xyxy.map((coord) => {
+                        if (coord.id !== shape.coordId) return coord;
+                        return { ...coord, showLabel: !coord.showLabel };
+                      }),
+                    };
+                  }) || [],
+                }
+              : layer
+          )
+        );
+      } else if (shape.type === "drawing") {
+        setLayers((prev) =>
+          prev.map((layer) =>
+            layer.id === targetLayer.id
+              ? {
+                  ...layer,
+                  drawings: layer.drawings.map((drawing) => {
+                    if (drawing.id !== shape.drawingId) return drawing;
+                    return { ...drawing, showLabel: !drawing.showLabel };
+                  }),
+                }
+              : layer
+          )
+        );
+      }
+      drawAnnotations(targetLayer.id);
+    }
+  };
+
   const drawAnnotations = useCallback(
     (layerId?: number) => {
       const layersToDraw =
@@ -439,7 +739,6 @@ export default function LayerViewer() {
         const displayedWidth = imageElement.getBoundingClientRect().width;
         const displayedHeight = imageElement.getBoundingClientRect().height;
 
-        // Set canvas dimensions with device pixel ratio for crisp rendering
         canvas.width = displayedWidth * window.devicePixelRatio;
         canvas.height = displayedHeight * window.devicePixelRatio;
         canvas.style.width = `${displayedWidth}px`;
@@ -561,7 +860,6 @@ export default function LayerViewer() {
           drawShape(ctx, drawing, scaleX, scaleY)
         );
 
-        // Draw current drawing preview for the active layer
         if (
           (isDrawing || isPolygonDrawing) &&
           currentPoints.length >= 2 &&
@@ -613,7 +911,7 @@ export default function LayerViewer() {
   useEffect(() => {
     const resizeObserver = new ResizeObserver(() => {
       requestAnimationFrame(() => {
-        drawAnnotations(); // Redraw all layers
+        drawAnnotations();
       });
     });
 
@@ -642,48 +940,45 @@ export default function LayerViewer() {
   }, [layers, drawAnnotations]);
 
   useEffect(() => {
-    // Redraw all layers when imageSizes, layers, or fullScreenLayer change
     drawAnnotations();
   }, [imageSizes, layers, fullScreenLayer, drawAnnotations]);
 
-    const handleDeleteLayer = (id: number) => {
+  const handleDeleteLayer = (id: number) => {
     if (layers.length === 1) {
       toast.error("Cannot delete the last layer");
       return;
     }
-  
+
     setLayers((prevLayers) => {
       const updatedLayers = prevLayers.filter((layer) => layer.id !== id);
-  
-      // Update imageSizes based on the updated layers
+
       setImageSizes((prevSizes) =>
         prevSizes.filter((_, index) => updatedLayers[index]?.id !== id)
       );
-  
-      // Update selectedLayer to the first available layer if the deleted layer was selected
+
       if (selectedLayer === id) {
         setSelectedLayer(updatedLayers.length > 0 ? updatedLayers[0].id : 0);
       }
-  
+
       return updatedLayers;
     });
-  
+
     if (fullScreenLayer?.id === id) {
       setFullScreenLayer(null);
     }
   };
-  
+
   const addLayer = () => {
     setLayers((prevLayers) => {
       if (prevLayers.length >= 6) {
         toast.error("Maximum of 6 layers allowed");
         return prevLayers;
       }
-  
+
       const lastId =
         prevLayers.length > 0 ? prevLayers[prevLayers.length - 1].id : 0;
       const newId = lastId + 1;
-  
+
       const newLayer: Layer = {
         id: newId,
         file: null,
@@ -694,13 +989,10 @@ export default function LayerViewer() {
         canvasRef: React.createRef<HTMLCanvasElement>(),
         containerRef: React.createRef<HTMLDivElement>(),
       };
-  
-      // Add a new entry to imageSizes for the new layer
+
       setImageSizes((prev) => [...prev, { width: 0, height: 0 }]);
-  
-      // Automatically select the new layer
       setSelectedLayer(newId);
-  
+
       return [...prevLayers, newLayer];
     });
   };
@@ -712,9 +1004,11 @@ export default function LayerViewer() {
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (
       !isAnnotationEnabled ||
-      !["rectangle", "line", "point", "polygon"].includes(currentTool)
-    )
+      (currentTool === "select" && !isTransforming)
+    ) {
+      handleShapeClick(e, fullScreenLayer || layers[selectedLayer]);
       return;
+    }
 
     const targetLayer = fullScreenLayer || layers[selectedLayer];
     const canvas = targetLayer.canvasRef.current;
@@ -739,36 +1033,105 @@ export default function LayerViewer() {
     const scaledX = x * scaleX;
     const scaledY = y * scaleY;
 
+    if (currentTool === "move") {
+      const shape = findShapeAtPoint(scaledX, scaledY, 1, 1, targetLayer);
+      if (shape?.type === "drawing") {
+        setIsTransforming(true);
+        setSelectedShape(shape.drawingId);
+        setTransformOrigin({ x: scaledX, y: scaledY });
+        return;
+      }
+    }
+
+    if (currentTool === "reshape") {
+      const nearestPoint = findNearestPoint(scaledX, scaledY, targetLayer.drawings);
+      if (nearestPoint) {
+        setSelectedDrawingId(nearestPoint.drawingId);
+        setSelectedPointIndex(nearestPoint.pointIndex);
+        setIsDraggingPoint(true);
+        setDraggedPointOffset({
+          x: scaledX - nearestPoint.originalX,
+          y: scaledY - nearestPoint.originalY,
+        });
+        return;
+      }
+    }
+
     if (currentTool === "polygon") {
       if (!isPolygonDrawing) {
         setIsPolygonDrawing(true);
         setCurrentPoints([scaledX, scaledY]);
       } else {
-        setCurrentPoints((prev) => [...prev, scaledX, scaledY]);
+        const startX = currentPoints[0];
+        const startY = currentPoints[1];
+        const distance = Math.sqrt(
+          Math.pow(scaledX - startX, 2) + Math.pow(scaledY - startY, 2)
+        );
+
+        if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
+          setLayers((prev) =>
+            prev.map((layer) =>
+              layer.id === targetLayer.id
+                ? {
+                    ...layer,
+                    drawings: [
+                      ...layer.drawings,
+                      {
+                        type: "polygon",
+                        points: currentPoints,
+                        visible: true,
+                        strokeColor: "rgb(255,0,0)",
+                        bgColor: "rgba(255,0,0,0.2)",
+                        showStroke: true,
+                        showBackground: true,
+                        label: "",
+                        id: `drawing-${Date.now()}`,
+                        transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
+                        showLabel: false,
+                      },
+                    ],
+                    drawingHistory: [...layer.drawingHistory, layer.drawings],
+                  }
+                : layer
+            )
+          );
+          setIsPolygonDrawing(false);
+          setCurrentPoints([]);
+          setShowSelecting(true);
+          setSelectionPosition({ x: scaledX, y: scaledY });
+        } else {
+          setCurrentPoints((prev) => [...prev, scaledX, scaledY]);
+        }
       }
     } else if (currentTool === "point") {
-      const newDrawing: Drawing = {
-        type: "point",
-        points: [scaledX, scaledY],
-        visible: true,
-        strokeColor: "rgb(255,0,0)",
-        bgColor: "rgba(255,0,0,0.2)",
-        showStroke: true,
-        showBackground: true,
-        showLabel: false,
-      };
-
       setLayers((prev) =>
         prev.map((layer) =>
           layer.id === targetLayer.id
             ? {
                 ...layer,
-                drawings: [...layer.drawings, newDrawing],
+                drawings: [
+                  ...layer.drawings,
+                  {
+                    type: "point",
+                    points: [scaledX, scaledY],
+                    visible: true,
+                    strokeColor: "rgb(255,0,0)",
+                    bgColor: "rgba(255,0,0,0.2)",
+                    showStroke: true,
+                    showBackground: true,
+                    label: "",
+                    id: `drawing-${Date.now()}`,
+                    transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
+                    showLabel: false,
+                  },
+                ],
                 drawingHistory: [...layer.drawingHistory, layer.drawings],
               }
             : layer
         )
       );
+      setShowSelecting(true);
+      setSelectionPosition({ x: scaledX, y: scaledY });
     } else {
       setIsDrawing(true);
       setCurrentPoints([scaledX, scaledY]);
@@ -778,8 +1141,7 @@ export default function LayerViewer() {
   const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (
       !isAnnotationEnabled ||
-      (!isDrawing && !isPolygonDrawing) ||
-      !["rectangle", "line", "polygon"].includes(currentTool)
+      (!isDrawing && !isPolygonDrawing && !isTransforming && !isDraggingPoint)
     )
       return;
 
@@ -806,6 +1168,107 @@ export default function LayerViewer() {
     const scaledX = x * scaleX;
     const scaledY = y * scaleY;
 
+    if (isTransforming && selectedShape && currentTool === "move") {
+      const drawing = targetLayer.drawings.find((d) => d.id === selectedShape);
+      if (!drawing || !transformOrigin) return;
+
+      const dx = scaledX - transformOrigin.x;
+      const dy = scaledY - transformOrigin.y;
+
+      setLayers((prev) =>
+        prev.map((layer) =>
+          layer.id === targetLayer.id
+            ? {
+                ...layer,
+                drawings: layer.drawings.map((d) => {
+                  if (d.id === selectedShape) {
+                    return {
+                      ...d,
+                      points: d.points.map((point, index) =>
+                        index % 2 === 0 ? point + dx : point + dy
+                      ),
+                      transform: {
+                        ...d.transform,
+                        translate: {
+                          x: (d.transform?.translate?.x || 0) + dx,
+                          y: (d.transform?.translate?.y || 0) + dy,
+                        },
+                      },
+                    };
+                  }
+                  return d;
+                }),
+              }
+            : layer
+        )
+      );
+
+      setTransformOrigin({ x: scaledX, y: scaledY });
+      drawAnnotations(targetLayer.id);
+      return;
+    }
+
+    if (
+      isDraggingPoint &&
+      selectedDrawingId !== null &&
+      selectedPointIndex !== null
+    ) {
+      const offsetX = draggedPointOffset
+        ? scaledX - draggedPointOffset.x
+        : scaledX;
+      const offsetY = draggedPointOffset
+        ? scaledY - draggedPointOffset.y
+        : scaledY;
+
+      setLayers((prev) =>
+        prev.map((layer) =>
+          layer.id === targetLayer.id
+            ? {
+                ...layer,
+                drawings: layer.drawings.map((drawing) => {
+                  if (drawing.id !== selectedDrawingId) return drawing;
+
+                  const newPoints = [...drawing.points];
+                  switch (drawing.type) {
+                    case "rectangle": {
+                      if (selectedPointIndex === 0) {
+                        newPoints[0] = offsetX;
+                        newPoints[1] = offsetY;
+                      } else if (selectedPointIndex === 1) {
+                        newPoints[2] = offsetX;
+                        newPoints[1] = offsetY;
+                      } else if (selectedPointIndex === 2) {
+                        newPoints[2] = offsetX;
+                        newPoints[3] = offsetY;
+                      } else if (selectedPointIndex === 3) {
+                        newPoints[0] = offsetX;
+                        newPoints[3] = offsetY;
+                      }
+                      break;
+                    }
+                    case "line": {
+                      const pointIndex = selectedPointIndex * 2;
+                      newPoints[pointIndex] = offsetX;
+                      newPoints[pointIndex + 1] = offsetY;
+                      break;
+                    }
+                    case "polygon": {
+                      newPoints[selectedPointIndex * 2] = offsetX;
+                      newPoints[selectedPointIndex * 2 + 1] = offsetY;
+                      break;
+                    }
+                  }
+                  return { ...drawing, points: newPoints };
+                }),
+              }
+            : layer
+        )
+      );
+
+      drawAnnotations(targetLayer.id);
+      return;
+    }
+
     if (currentTool !== "polygon") {
       setCurrentPoints((prev) => [...prev.slice(0, 2), scaledX, scaledY]);
     }
@@ -814,13 +1277,20 @@ export default function LayerViewer() {
   };
 
   const endDrawing = () => {
+    if (isDraggingPoint) {
+      setIsDraggingPoint(false);
+      setSelectedDrawingId(null);
+      setSelectedPointIndex(null);
+      setDraggedPointOffset(null);
+      return;
+    }
+
     if (!isDrawing && !isPolygonDrawing) return;
 
     const targetLayer = fullScreenLayer || layers[selectedLayer];
     const targetLayerId = targetLayer.id;
 
     if (currentTool === "polygon" && isPolygonDrawing) {
-      // Polygon drawing is completed via double-click
       return;
     } else if (isDrawing) {
       const newDrawing: Drawing = {
@@ -831,6 +1301,9 @@ export default function LayerViewer() {
         bgColor: "rgba(255,0,0,0.2)",
         showStroke: true,
         showBackground: true,
+        label: "",
+        id: `drawing-${Date.now()}`,
+        transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
         showLabel: false,
       };
 
@@ -847,6 +1320,8 @@ export default function LayerViewer() {
       );
       setIsDrawing(false);
       setCurrentPoints([]);
+      setShowSelecting(true);
+      setSelectionPosition({ x: currentPoints[0], y: currentPoints[1] });
     }
 
     drawAnnotations(targetLayerId);
@@ -859,7 +1334,6 @@ export default function LayerViewer() {
     const targetLayerId = targetLayer.id;
 
     if (currentPoints.length >= 6) {
-      // Ensure at least 3 points for a polygon
       setLayers((prev) =>
         prev.map((layer) =>
           layer.id === targetLayerId
@@ -875,6 +1349,9 @@ export default function LayerViewer() {
                     bgColor: "rgba(255,0,0,0.2)",
                     showStroke: true,
                     showBackground: true,
+                    label: "",
+                    id: `drawing-${Date.now()}`,
+                    transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
                     showLabel: false,
                   },
                 ],
@@ -883,11 +1360,44 @@ export default function LayerViewer() {
             : layer
         )
       );
+      setShowSelecting(true);
+      setSelectionPosition({ x: currentPoints[0], y: currentPoints[1] });
     }
 
     setIsPolygonDrawing(false);
     setCurrentPoints([]);
     drawAnnotations(targetLayerId);
+  };
+
+  const handleSelectionSubmit = (
+    toothNumber: string,
+    pathology: string,
+    customPathology?: string
+  ) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === (fullScreenLayer ? fullScreenLayer.id : selectedLayer)
+          ? {
+              ...layer,
+              drawings: layer.drawings.map((drawing, index) => {
+                if (index !== layer.drawings.length - 1) return drawing;
+                const label =
+                  pathology === "Other" && customPathology
+                    ? `${toothNumber} ${customPathology}`
+                    : `${toothNumber} ${pathology}`;
+                return {
+                  ...drawing,
+                  label,
+                  toothNumber,
+                  pathology,
+                  customPathology,
+                };
+              }),
+            }
+          : layer
+      )
+    );
+    setShowSelecting(false);
   };
 
   const handleDownloadWithAnnotations = () => {
@@ -910,14 +1420,6 @@ export default function LayerViewer() {
 
     const img = new Image();
     img.onload = () => {
-      const displayedImage = layer.containerRef?.current?.querySelector("img");
-      if (!displayedImage) return;
-
-      const displayedWidth = displayedImage.getBoundingClientRect().width;
-      const displayedHeight = displayedImage.getBoundingClientRect().height;
-      const scaleX = imageSize.width / displayedWidth;
-      const scaleY = imageSize.height / displayedHeight;
-
       tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
 
       if (isAnnotationEnabled) {
@@ -993,9 +1495,7 @@ export default function LayerViewer() {
           });
         });
 
-        layer.drawings.forEach(
-          (drawing) => drawShape(tempCtx, drawing, 1, 1) // Use 1:1 scale for download
-        );
+        layer.drawings.forEach((drawing) => drawShape(tempCtx, drawing, 1, 1));
       }
 
       tempCanvas.toBlob((blob) => {
@@ -1031,6 +1531,19 @@ export default function LayerViewer() {
       handleUpload();
     }
   }, [layers, selectedLayer, checkType]);
+
+  useEffect(() => {
+    const handleMouseUp = () => {
+      if (isTransforming) {
+        setIsTransforming(false);
+        setSelectedShape(null);
+        setTransformOrigin(null);
+      }
+    };
+
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [isTransforming]);
 
   const bgColor = theme === "dark" ? "bg-zinc-900" : "bg-gray-100";
   const borderColorForLoader =
@@ -1135,14 +1648,96 @@ export default function LayerViewer() {
           </Tooltip>
         </TooltipProvider>
       </div>
-      <ToolBar
-        theme={theme}
-        barBgColor={barBgColor}
-        borderColor={borderColor}
-        handleUndo={handleUndo}
-        handleDownloadWithAnnotations={handleDownloadWithAnnotations}
-        setCurrentTool={setCurrentTool}
-      />
+      <div
+        className={`flex items-center p-1 gap-1 ${barBgColor} ${borderColor} border-b overflow-x-auto scrollbar-hide`}
+      >
+        <ToolButton
+          icon={<Undo size={16} />}
+          label="Undo"
+          theme={theme}
+          onClick={handleUndo}
+        />
+        <ToolButton
+          icon={<MousePointer size={16} />}
+          label="Select"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("select");
+            setIsDrawing(false);
+            setIsPolygonDrawing(false);
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Move size={16} />}
+          label="Move"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("move");
+            setIsDrawing(false);
+            setIsPolygonDrawing(false);
+          }}
+        />
+        <ToolButton
+          icon={<SquarePen size={16} />}
+          label="Reshape"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("reshape");
+            setIsDrawing(false);
+            setIsPolygonDrawing(false);
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Square size={16} />}
+          label="Rectangle"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("rectangle");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Minus size={16} />}
+          label="Line"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("line");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Dot size={16} />}
+          label="Point"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("point");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<BsBoundingBoxCircles size={16} />}
+          label="Polygon"
+          theme={theme}
+          onClick={() => {
+            setCurrentTool("polygon");
+            setIsTransforming(false);
+          }}
+        />
+        <ToolButton
+          icon={<Download size={16} />}
+          label="Export"
+          theme={theme}
+          onClick={handleDownloadWithAnnotations}
+        />
+        <ToolButton
+          icon={<ImageMinus size={16} />}
+          label="Remove"
+          theme={theme}
+          onClick={() => handleRemoveImage(selectedLayer)}
+        />
+      </div>
       <div className="flex flex-1 overflow-hidden">
         <div
           className={`w-10 ${panelBgColor} ${borderColor} border-r flex flex-col items-center py-2 gap-3`}
@@ -1220,24 +1815,14 @@ export default function LayerViewer() {
                     className="flex items-center justify-center h-full"
                     ref={fullScreenLayer.containerRef}
                   >
-                    {fullScreenLayer ? (
-                      <div className="absolute top-0 right-0 z-20 p-2 group">
-                        {/* Trigger icon */}
-                        <p className={`${iconColor} cursor-pointer`} onClick={()=>setFullScreenLayer(null)}>
-                          <Minimize strokeWidth={1.2} size={"20px"} />
-                        </p>
-                      </div>
-                    ) : (
-                      <LayerOptions
-                        layer={fullScreenLayer}
-                        theme={theme}
-                        setFullScreenLayer={setFullScreenLayer}
-                        handleDeleteLayer={handleDeleteLayer}
-                        handleDeleteLayerImg={() =>
-                          handleRemoveImage(fullScreenLayer.id)
-                        }
-                      />
-                    )}
+                    <div className="absolute top-0 right-0 z-20 p-2 group">
+                      <p
+                        className={`${iconColor} cursor-pointer`}
+                        onClick={() => setFullScreenLayer(null)}
+                      >
+                        <Minimize strokeWidth={1.2} size={"20px"} />
+                      </p>
+                    </div>
                     <div className="relative inline-block">
                       <img
                         src={URL.createObjectURL(fullScreenLayer.file)}
@@ -1366,25 +1951,48 @@ export default function LayerViewer() {
                   <TabsTrigger value="OPG">OPG</TabsTrigger>
                   <TabsTrigger value="MARKINGS">MARKINGS</TabsTrigger>
                 </TabsList>
-                <TabsContent value="OPG" className="mt-2 overflow-y-scroll scrollbar-hide mb-2 ">
-                  {layers.map((layer)=>{
-                    return(
-                      <>
-                      <p className="py-2">Layer{layer.id + 1}</p>
+                <TabsContent value="OPG" className="mt-2 overflow-y-scroll scrollbar-hide mb-2">
+                  {layers.map((layer) => (
+                    <div key={layer.id}>
+                      <p className="py-2">Layer {layer.id + 1}</p>
                       <RenderOPGAnnotationsList
-                    annotations={layer?.annotations}
-                    theme={theme}
-                    // editingId={editingId}
-                    // setEditingId={setEditingId}
-                    // setAnnotations={setAnnotations}
-                    textColor={textColor}
-                    secondaryTextColor={secondaryTextColor}
-                  />
-                      </>
-                    )
-                  })}
+                        annotations={layer?.annotations}
+                        theme={theme}
+                        editingId={editingId}
+                        setEditingId={setEditingId}
+                        setAnnotations={(annotations) =>
+                          setLayers((prev) =>
+                            prev.map((l) =>
+                              l.id === layer.id ? { ...l, annotations } : l
+                            )
+                          )
+                        }
+                        textColor={textColor}
+                        secondaryTextColor={secondaryTextColor}
+                      />
+                    </div>
+                  ))}
                 </TabsContent>
-               
+                <TabsContent value="MARKINGS" className="mt-2">
+                  {layers.map((layer) => (
+                    <div key={layer.id}>
+                      <p className="py-2">Layer {layer.id + 1}</p>
+                      <RenderCustomAnnotationsList
+                        drawings={layer.drawings}
+                        theme={theme}
+                        setDrawings={(drawings) =>
+                          setLayers((prev) =>
+                            prev.map((l) =>
+                              l.id === layer.id ? { ...l, drawings } : l
+                            )
+                          )
+                        }
+                        textColor={textColor}
+                        secondaryTextColor={secondaryTextColor}
+                      />
+                    </div>
+                  ))}
+                </TabsContent>
               </Tabs>
             </div>
           )}

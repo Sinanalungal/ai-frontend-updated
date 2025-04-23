@@ -1,0 +1,1205 @@
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  Moon,
+  Sun,
+  Highlighter,
+  Play,
+  Fullscreen,
+  Minimize,
+  Layers,
+} from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import axios from "axios";
+import { toast } from "sonner";
+import { classColors } from "@/constants/teethRelated";
+import { MdOutlineCloudUpload } from "react-icons/md";
+import { useDropzone } from "react-dropzone";
+import LayerOptions from "./LayerOptions";
+import LayerActionMenu from "./LayerActionMenu";
+import { ToolBar } from "./Toolbar";
+
+const SNAP_THRESHOLD = 10;
+
+interface Annotation {
+  class: string;
+  roi_xyxy: {
+    coordinates: number[];
+    poly?: number[][];
+    visible: boolean;
+    id: string;
+    label: string;
+    strokeColor: string;
+    bgColor: string;
+    showStroke: boolean;
+    showBackground: boolean;
+    openDrawer: boolean;
+    showLabel: boolean;
+  }[];
+}
+
+interface Drawing {
+  type: "rectangle" | "line" | "point" | "polygon";
+  points: number[];
+  visible: boolean;
+  strokeColor: string;
+  bgColor: string;
+  showStroke: boolean;
+  showBackground: boolean;
+  label?: string;
+  showLabel: boolean;
+}
+
+interface UploadResponse {
+  data: {
+    results: {
+      class: string;
+      roi_xyxy: number[][];
+      poly?: number[][][];
+    }[];
+  };
+}
+
+interface Layer {
+  id: number;
+  file: File | null;
+  annotations: Annotation[] | null;
+  drawings: Drawing[];
+  drawingHistory: Drawing[][];
+  response: UploadResponse | null;
+  canvasRef: React.RefObject<HTMLCanvasElement>;
+  containerRef: React.RefObject<HTMLDivElement>;
+}
+
+export default function LayerViewer() {
+  const [theme, setTheme] = useState<"dark" | "light">("light");
+  const [infoPanelOpen, setInfoPanelOpen] = useState(false);
+  const [selectedLayer, setSelectedLayer] = useState<number>(0);
+  const [checkType, setCheckType] = useState<"qc" | "path">("qc");
+  const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
+  const [currentTool, setCurrentTool] = useState<
+    | "select"
+    | "move"
+    | "reshape"
+    | "rectangle"
+    | "line"
+    | "point"
+    | "polygon"
+    | "measure"
+  >("select");
+  const [isLoading, setIsLoading] = useState<boolean[]>([false]);
+  const [imageSize, setImageSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+
+  const [layers, setLayers] = useState<Layer[]>([
+    {
+      id: 0,
+      file: null,
+      annotations: null,
+      drawings: [],
+      drawingHistory: [],
+      response: null,
+      canvasRef: React.createRef<HTMLCanvasElement>(),
+      containerRef: React.createRef<HTMLDivElement>(),
+    },
+  ]);
+
+  const canvasRef0 = useRef<HTMLCanvasElement>(null);
+  const containerRef0 = useRef<HTMLDivElement>(null);
+  const canvasRef1 = useRef<HTMLCanvasElement>(null);
+  const containerRef1 = useRef<HTMLDivElement>(null);
+  const canvasRef2 = useRef<HTMLCanvasElement>(null);
+  const containerRef2 = useRef<HTMLDivElement>(null);
+  const canvasRef3 = useRef<HTMLCanvasElement>(null);
+  const containerRef3 = useRef<HTMLDivElement>(null);
+  const canvasRef4 = useRef<HTMLCanvasElement>(null);
+  const containerRef4 = useRef<HTMLDivElement>(null);
+  const canvasRef5 = useRef<HTMLCanvasElement>(null);
+  const containerRef5 = useRef<HTMLDivElement>(null);
+  const canvasRefFullScreen = useRef<HTMLCanvasElement>(null);
+  const containerRefFullScreen = useRef<HTMLDivElement>(null);
+  
+
+  const [fullScreenLayer, setFullScreenLayer] = useState<Layer | null>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPoints, setCurrentPoints] = useState<number[]>([]);
+  const [isPolygonDrawing, setIsPolygonDrawing] = useState(false);
+
+  // Manage refs dynamically using a Map
+  const canvasRefs = useRef<Map<number, React.RefObject<HTMLCanvasElement>>>(
+    new Map()
+  );
+  const containerRefs = useRef<Map<number, React.RefObject<HTMLDivElement>>>(
+    new Map()
+  );
+
+  // Initialize refs for new layers
+  useEffect(() => {
+    layers.forEach((layer) => {
+      if (!canvasRefs.current.has(layer.id)) {
+        canvasRefs.current.set(layer.id, layer.canvasRef);
+      }
+      if (!containerRefs.current.has(layer.id)) {
+        containerRefs.current.set(layer.id, layer.containerRef);
+      }
+    });
+  }, [layers]);
+
+  const toggleTheme = () => {
+    setTheme(theme === "dark" ? "light" : "dark");
+  };
+
+  const handleRemoveImage = (layerId: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === layerId
+          ? {
+              ...layer,
+              file: null,
+              annotations: null,
+              drawings: [],
+              drawingHistory: [],
+              response: null,
+            }
+          : layer
+      )
+    );
+    setImageSize({ width: 0, height: 0 });
+    setIsDrawing(false);
+    setIsPolygonDrawing(false);
+    setCurrentPoints([]);
+  };
+
+  const handleUndo = () => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === selectedLayer && layer.drawingHistory.length > 0
+          ? {
+              ...layer,
+              drawings: layer.drawingHistory[layer.drawingHistory.length - 1],
+              drawingHistory: layer.drawingHistory.slice(0, -1),
+            }
+          : layer
+      )
+    );
+  };
+
+  const handleUpload = async () => {
+    const layer = layers.find((l) => l.id === selectedLayer);
+    if (!layer?.file) return;
+
+    setIsLoading((prev) => {
+      const newLoading = [...prev];
+      newLoading[selectedLayer] = true;
+      return newLoading;
+    });
+
+    const formData = new FormData();
+    formData.append("file", layer.file);
+    formData.append("model_name", checkType);
+
+    try {
+      const res = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/inference/`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            "ngrok-skip-browser-warning": "1",
+          },
+        }
+      );
+
+      const responseData = res.data as UploadResponse;
+      processApiResponse(responseData);
+    } catch (error) {
+      console.error(error);
+      toast.error("Failed to process image");
+    } finally {
+      setIsLoading((prev) => {
+        const newLoading = [...prev];
+        newLoading[selectedLayer] = false;
+        return newLoading;
+      });
+    }
+  };
+
+  const processApiResponse = (responseData: UploadResponse) => {
+    const classMap = new Map<string, Annotation>();
+
+    responseData.data.results.forEach((result, index) => {
+      const className = result.class;
+
+      if (!classMap.has(className)) {
+        classMap.set(className, {
+          class: className,
+          roi_xyxy: [],
+        });
+      }
+
+      const annotation = classMap.get(className)!;
+
+      annotation.roi_xyxy.push({
+        coordinates: result.roi_xyxy[0],
+        poly: result.poly ? result.poly[0] : undefined,
+        visible: true,
+        id: `${className}-${index}`,
+        label: (index + 1).toString(),
+        strokeColor: classColors[className]
+          ? classColors[className][1]
+          : "rgb(255,0,0)",
+        bgColor: classColors[className]
+          ? classColors[className][0]
+          : "rgba(255, 0, 0, 0.5)",
+        showStroke: true,
+        showBackground: checkType === "path",
+        openDrawer: false,
+        showLabel: false,
+      });
+    });
+
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === selectedLayer
+          ? {
+              ...layer,
+              annotations: Array.from(classMap.values()),
+              response: responseData,
+            }
+          : layer
+      )
+    );
+  };
+
+  const onDrop = useCallback(
+    (acceptedFiles: File[]) => {
+      try {
+        const file = acceptedFiles[0];
+        if (!file) {
+          toast.error("No file selected");
+          return;
+        }
+
+        if (!file.type.startsWith("image/")) {
+          toast.error("Please upload an image file");
+          return;
+        }
+
+        const img = new Image();
+        img.onload = () => {
+          setImageSize({
+            width: img.width,
+            height: img.height,
+          });
+
+          setLayers((prev) =>
+            prev.map((layer) =>
+              layer.id === selectedLayer
+                ? {
+                    ...layer,
+                    file,
+                    annotations: null,
+                    drawings: [],
+                    drawingHistory: [],
+                    response: null,
+                  }
+                : layer
+            )
+          );
+        };
+
+        img.onerror = () => {
+          toast.error("Failed to load image");
+        };
+
+        img.src = URL.createObjectURL(file);
+      } catch (error) {
+        console.error("Upload error:", error);
+        toast.error("Failed to upload image");
+      }
+    },
+    [selectedLayer]
+  );
+
+  const { getRootProps, getInputProps } = useDropzone({
+    onDrop,
+    accept: { "image/*": [".jpeg", ".png", ".gif", ".jpg"] },
+    multiple: false,
+  });
+
+  const drawShape = (
+    ctx: CanvasRenderingContext2D,
+    drawing: Drawing,
+    scaleX: number,
+    scaleY: number
+  ) => {
+    if (!drawing.visible) return;
+
+    ctx.beginPath();
+    ctx.strokeStyle =
+      drawing.showStroke && drawing.strokeColor
+        ? drawing.strokeColor
+        : "transparent";
+    ctx.fillStyle =
+      drawing.showBackground && drawing.bgColor
+        ? drawing.bgColor
+        : "transparent";
+    ctx.lineWidth = 1;
+
+    const points = drawing.points;
+    switch (drawing.type) {
+      case "rectangle":
+        if (drawing.showBackground) {
+          ctx.fillRect(
+            points[0] * scaleX,
+            points[1] * scaleY,
+            (points[2] - points[0]) * scaleX,
+            (points[3] - points[1]) * scaleY
+          );
+        }
+        if (drawing.showStroke) {
+          ctx.strokeRect(
+            points[0] * scaleX,
+            points[1] * scaleY,
+            (points[2] - points[0]) * scaleX,
+            (points[3] - points[1]) * scaleY
+          );
+        }
+        break;
+      case "line":
+        ctx.moveTo(points[0] * scaleX, points[1] * scaleY);
+        ctx.lineTo(points[2] * scaleX, points[3] * scaleY);
+        if (drawing.showStroke) ctx.stroke();
+        break;
+      case "point":
+        ctx.arc(points[0] * scaleX, points[1] * scaleY, 3, 0, Math.PI * 2);
+        if (drawing.showBackground) ctx.fill();
+        if (drawing.showStroke) ctx.stroke();
+        break;
+      case "polygon":
+        ctx.moveTo(points[0] * scaleX, points[1] * scaleY);
+        for (let i = 2; i < points.length; i += 2) {
+          ctx.lineTo(points[i] * scaleX, points[i + 1] * scaleY);
+        }
+        ctx.closePath();
+        if (drawing.showBackground) ctx.fill();
+        if (drawing.showStroke) ctx.stroke();
+        break;
+    }
+
+    if (drawing.label && drawing.showLabel) {
+      ctx.font = "12px Poppins";
+      const textMetrics = ctx.measureText(drawing.label);
+      ctx.fillStyle =
+        theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+      ctx.fillRect(
+        points[0] * scaleX,
+        points[1] * scaleY - 20,
+        textMetrics.width + 10,
+        20
+      );
+      ctx.fillStyle = "#FFFFFF";
+      ctx.fillText(
+        drawing.label,
+        points[0] * scaleX + 5,
+        points[1] * scaleY - 5
+      );
+    }
+  };
+
+  const drawAnnotations = useCallback((layerId?:number) => {
+    const layer = layerId?layers.find((l) => l.id === layerId) : fullScreenLayer || layers.find((l) => l.id === selectedLayer);
+    const canvas = canvasRefs.current.get(layer?.id || 0)?.current;
+    const container = containerRefs.current.get(layer?.id || 0)?.current;
+    if (!canvas || !container || !imageSize.width || !imageSize.height) return;
+
+    const imageElement = container.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+
+    // Set canvas pixel dimensions to match displayed image size
+    canvas.width = displayedWidth;
+    canvas.height = displayedHeight;
+    canvas.style.width = `${displayedWidth}px`;
+    canvas.style.height = `${displayedHeight}px`;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!isAnnotationEnabled) return;
+
+    const scaleX = displayedWidth / imageSize.width;
+    const scaleY = displayedHeight / imageSize.height;
+
+    layer?.annotations?.forEach((annotation) => {
+      annotation.roi_xyxy.forEach((coord) => {
+        if (!coord.visible) return;
+
+        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+          ctx.beginPath();
+          ctx.fillStyle =
+            coord.showBackground && coord.bgColor
+              ? coord.bgColor
+              : "transparent";
+          ctx.strokeStyle =
+            coord.showStroke && coord.strokeColor
+              ? coord.strokeColor
+              : "transparent";
+          ctx.lineWidth = 0.8;
+
+          ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
+          for (let i = 1; i < coord.poly.length; i++) {
+            ctx.lineTo(coord.poly[i][0] * scaleX, coord.poly[i][1] * scaleY);
+          }
+          ctx.closePath();
+          if (coord.showBackground) ctx.fill();
+          if (coord.showStroke) ctx.stroke();
+
+          if (coord.showLabel) {
+            const label = `${coord.label}. ${annotation.class}`.trim();
+            if (label) {
+              ctx.font = "12px Poppins";
+              const textMetrics = ctx.measureText(label);
+              ctx.fillStyle =
+                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+              ctx.fillRect(
+                coord.poly[0][0] * scaleX,
+                coord.poly[0][1] * scaleY - 20,
+                textMetrics.width + 10,
+                20
+              );
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillText(
+                label,
+                coord.poly[0][0] * scaleX + 5,
+                coord.poly[0][1] * scaleY - 5
+              );
+            }
+          }
+        } else {
+          const [x1, y1, x2, y2] = coord.coordinates;
+          const scaledX1 = x1 * scaleX;
+          const scaledY1 = y1 * scaleY;
+          const scaledX2 = x2 * scaleX;
+          const scaledY2 = y2 * scaleY;
+
+          if (coord.showBackground && coord.bgColor) {
+            ctx.fillStyle = coord.bgColor;
+            ctx.fillRect(
+              scaledX1,
+              scaledY1,
+              scaledX2 - scaledX1,
+              scaledY2 - scaledY1
+            );
+          }
+
+          if (coord.showStroke && coord.strokeColor) {
+            ctx.strokeStyle = coord.strokeColor;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+              scaledX1,
+              scaledY1,
+              scaledX2 - scaledX1,
+              scaledY2 - scaledY1
+            );
+          }
+
+          if (coord.showLabel) {
+            const label = `${coord.label} ${annotation.class}`.trim();
+            if (label) {
+              ctx.font = "12px Poppins";
+              const textMetrics = ctx.measureText(label);
+              ctx.fillStyle =
+                theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+              ctx.fillRect(scaledX1, scaledY1 - 20, textMetrics.width + 10, 20);
+              ctx.fillStyle = "#FFFFFF";
+              ctx.fillText(label, scaledX1 + 5, scaledY1 - 5);
+            }
+          }
+        }
+      });
+    });
+
+    layer?.drawings.forEach((drawing) =>
+      drawShape(ctx, drawing, scaleX, scaleY)
+    );
+  }, [
+    layers,
+    selectedLayer,
+    isAnnotationEnabled,
+    imageSize,
+    checkType,
+    theme,
+    fullScreenLayer,
+  ]);
+
+  const addLayer = () => {
+    setLayers((prevLayers) => {
+      if (prevLayers.length >= 6) {
+        toast.error("Maximum of 6 layers allowed");
+        return prevLayers;
+      }
+
+
+      const lastId =
+        prevLayers.length > 0 ? prevLayers[prevLayers.length - 1].id : 0;
+      const newId = lastId + 1;
+
+      const newLayer: Layer = {
+        id: newId,
+        file: null,
+        annotations: null,
+        drawings: [],
+        drawingHistory: [],
+        response: null,
+        canvasRef: React.createRef<HTMLCanvasElement>(),
+        containerRef: React.createRef<HTMLDivElement>(),
+      };
+
+      return [...prevLayers, newLayer];
+    });
+  };
+
+  const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (
+      !isAnnotationEnabled ||
+      !["rectangle", "line", "point", "polygon"].includes(currentTool)
+    )
+      return;
+
+    const canvas = canvasRefs.current.get(selectedLayer)?.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const imageElement = containerRefs.current
+      .get(selectedLayer)
+      ?.current?.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+    const scaleX = imageSize.width / displayedWidth;
+    const scaleY = imageSize.height / displayedHeight;
+
+    const scaledX = x * scaleX;
+    const scaledY = y * scaleY;
+
+    if (currentTool === "polygon") {
+      if (!isPolygonDrawing) {
+        setIsPolygonDrawing(true);
+        setCurrentPoints([scaledX, scaledY]);
+      } else {
+        setCurrentPoints((prev) => [...prev, scaledX, scaledY]);
+      }
+    } else {
+      setIsDrawing(true);
+      setCurrentPoints([scaledX, scaledY]);
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (
+      !isAnnotationEnabled ||
+      !isDrawing ||
+      !["rectangle", "line"].includes(currentTool)
+    )
+      return;
+
+    const canvas = canvasRefs.current.get(selectedLayer)?.current;
+    if (!canvas) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const imageElement = containerRefs.current
+      .get(selectedLayer)
+      ?.current?.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+    const scaleX = imageSize.width / displayedWidth;
+    const scaleY = imageSize.height / displayedHeight;
+
+    const scaledX = x * scaleX;
+    const scaledY = y * scaleY;
+
+    setCurrentPoints((prev) => [...prev.slice(0, 2), scaledX, scaledY]);
+    drawAnnotations();
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    ctx.beginPath();
+    ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+    ctx.lineWidth = 1;
+
+    if (currentTool === "rectangle") {
+      ctx.strokeRect(
+        currentPoints[0] / scaleX,
+        currentPoints[1] / scaleY,
+        (scaledX - currentPoints[0]) / scaleX,
+        (scaledY - currentPoints[1]) / scaleY
+      );
+    } else if (currentTool === "line") {
+      ctx.moveTo(currentPoints[0] / scaleX, currentPoints[1] / scaleY);
+      ctx.lineTo(scaledX / scaleX, scaledY / scaleY);
+      ctx.stroke();
+    }
+  };
+
+  const handleDeleteLayer = (id: number) => {
+    setLayers((prev) => prev.filter((layer) => layer.id !== id));
+    canvasRefs.current.delete(id);
+    containerRefs.current.delete(id);
+    if (selectedLayer === id && layers.length > 1) {
+      setSelectedLayer(layers[0].id);
+    }
+  };
+
+  const endDrawing = () => {
+    if (!isDrawing && !isPolygonDrawing) return;
+
+    if (currentTool === "polygon" && isPolygonDrawing) {
+      if (currentPoints.length >= 6) {
+        setLayers((prev) =>
+          prev.map((layer) =>
+            layer.id === selectedLayer
+              ? {
+                  ...layer,
+                  drawings: [
+                    ...layer.drawings,
+                    {
+                      type: "polygon",
+                      points: currentPoints,
+                      visible: true,
+                      strokeColor: "rgb(255,0,0)",
+                      bgColor: "rgba(255,0,0,0.2)",
+                      showStroke: true,
+                      showBackground: true,
+                      showLabel: false,
+                    },
+                  ],
+                  drawingHistory: [...layer.drawingHistory, layer.drawings],
+                }
+              : layer
+          )
+        );
+      }
+      setIsPolygonDrawing(false);
+      setCurrentPoints([]);
+    } else if (isDrawing) {
+      const newDrawing: Drawing = {
+        type: currentTool as "rectangle" | "line" | "point",
+        points: currentPoints,
+        visible: true,
+        strokeColor: "rgb(255,0,0)",
+        bgColor: "rgba(255,0,0,0.2)",
+        showStroke: true,
+        showBackground: true,
+        showLabel: false,
+      };
+
+      setLayers((prev) =>
+        prev.map((layer) =>
+          layer.id === selectedLayer
+            ? {
+                ...layer,
+                drawings: [...layer.drawings, newDrawing],
+                drawingHistory: [...layer.drawingHistory, layer.drawings],
+              }
+            : layer
+        )
+      );
+      setIsDrawing(false);
+      setCurrentPoints([]);
+    }
+
+    drawAnnotations();
+  };
+
+  const handleDownloadWithAnnotations = () => {
+    const layer = layers.find((l) => l.id === selectedLayer);
+    if (!layer?.file) {
+      toast.error("No image to download");
+      return;
+    }
+
+    const tempCanvas = document.createElement("canvas");
+    const tempCtx = tempCanvas.getContext("2d");
+    if (!tempCtx) return;
+
+    tempCanvas.width = imageSize.width;
+    tempCanvas.height = imageSize.height;
+
+    const img = new Image();
+    img.onload = () => {
+      const displayedImage = containerRefs.current
+        .get(selectedLayer)
+        ?.current?.querySelector("img");
+      if (!displayedImage) return;
+
+      const displayedWidth = displayedImage.clientWidth;
+      const displayedHeight = displayedImage.clientHeight;
+      const scaleX = imageSize.width / displayedWidth;
+      const scaleY = imageSize.height / displayedHeight;
+
+      tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
+
+      if (isAnnotationEnabled) {
+        layer.annotations?.forEach((annotation) => {
+          annotation.roi_xyxy.forEach((coord) => {
+            if (!coord.visible) return;
+
+            if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+              tempCtx.beginPath();
+              tempCtx.fillStyle =
+                coord.showBackground && coord.bgColor
+                  ? coord.bgColor
+                  : "transparent";
+              tempCtx.strokeStyle =
+                coord.showStroke && coord.strokeColor
+                  ? coord.strokeColor
+                  : "transparent";
+              tempCtx.moveTo(coord.poly[0][0], coord.poly[0][1]);
+              for (let i = 1; i < coord.poly.length; i++) {
+                tempCtx.lineTo(coord.poly[i][0], coord.poly[i][1]);
+              }
+              tempCtx.closePath();
+              if (coord.showBackground) tempCtx.fill();
+              if (coord.showStroke) tempCtx.stroke();
+
+              if (coord.showLabel) {
+                const label = `${annotation.class}`;
+                tempCtx.font = "12px Poppins";
+                const textMetrics = tempCtx.measureText(label);
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(
+                  coord.poly[0][0],
+                  coord.poly[0][1] - 20,
+                  textMetrics.width + 10,
+                  20
+                );
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(
+                  label,
+                  coord.poly[0][0] + 5,
+                  coord.poly[0][1] - 5
+                );
+              }
+            } else {
+              const [x1, y1, x2, y2] = coord.coordinates;
+              if (coord.showBackground && coord.bgColor) {
+                tempCtx.fillStyle = coord.bgColor;
+                tempCtx.fillRect(x1, y1, x2 - x1, y2 - y1);
+              }
+
+              if (coord.showStroke && coord.strokeColor) {
+                tempCtx.strokeStyle = coord.strokeColor;
+                tempCtx.lineWidth = 2;
+                tempCtx.strokeRect(x1, y1, x2 - x1, y2 - y1);
+              }
+
+              if (coord.showLabel) {
+                const label = `${annotation.class} ${coord.label}`;
+                tempCtx.font = "12px Poppins";
+                const textMetrics = tempCtx.measureText(label);
+                tempCtx.fillStyle =
+                  theme === "dark"
+                    ? "rgba(0, 0, 0, 0.7)"
+                    : "rgba(0, 0, 0, 0.7)";
+                tempCtx.fillRect(x1, y1 - 20, textMetrics.width + 10, 20);
+                tempCtx.fillStyle = "#FFFFFF";
+                tempCtx.fillText(label, x1 + 5, y1 - 5);
+              }
+            }
+          });
+        });
+
+        layer.drawings.forEach((drawing) =>
+          drawShape(tempCtx, drawing, scaleX, scaleY)
+        );
+      }
+
+      tempCanvas.toBlob((blob) => {
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `annotated_${layer?.file?.name}`;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+          URL.revokeObjectURL(url);
+          toast.success("Download completed");
+        }
+      }, "image/png");
+    };
+
+    img.src = URL.createObjectURL(layer.file);
+  };
+
+  useEffect(() => {
+    drawAnnotations();
+  }, [drawAnnotations]);
+
+  useEffect(() => {
+    const canvas = canvasRefs.current.get(selectedLayer)?.current;
+    if (!canvas) return;
+
+    canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
+  }, [currentTool, selectedLayer]);
+
+  useEffect(() => {
+    const layer = layers.find((l) => l.id === selectedLayer);
+    if (layer?.file && !layer.response) {
+      handleUpload();
+    }
+  }, [layers, selectedLayer, checkType]);
+
+  // Redraw on window resize
+  useEffect(() => {
+    const handleResize = () => drawAnnotations();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, [drawAnnotations]);
+
+  const bgColor = theme === "dark" ? "bg-zinc-900" : "bg-gray-100";
+  const borderColorForLoader =
+    theme === "dark" ? "border-white" : "border-black";
+  const textColor = theme === "dark" ? "text-zinc-100" : "text-gray-900";
+  const iconColor = theme === "dark" ? "text-zinc-100" : "text-gray-500";
+  const barBgColor = theme === "dark" ? "bg-zinc-800" : "bg-white";
+  const borderColor = theme === "dark" ? "border-zinc-700" : "border-gray-200";
+  const buttonHoverColor =
+    theme === "dark" ? "hover:bg-zinc-700" : "hover:bg-gray-200";
+  const buttonSelectColor = theme === "dark" ? "bg-zinc-700" : "bg-gray-200";
+  const panelBgColor = theme === "dark" ? "bg-zinc-800" : "bg-gray-50";
+
+  return (
+    <div
+      className={`flex flex-col font-poppins h-screen ${bgColor} ${textColor}`}
+    >
+      <div
+        className={`flex items-center justify-between p-2 ${barBgColor} ${borderColor} border-b`}
+      >
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1">
+            <img src="/vi-ai-favicon.svg" alt="" className="h-6 bg-contain" />
+            <span className="font-semibold">VI.AI</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-3">
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                  onClick={() =>
+                    setCheckType(checkType === "qc" ? "path" : "qc")
+                  }
+                >
+                  <span className="max-sm:hidden">Switch to</span>
+                  <span>{checkType === "qc" ? "Pathology" : "QC"}</span>
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-xs font-medium shadow-lg"
+              >
+                Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 ${buttonHoverColor} rounded-full`}
+                  onClick={toggleTheme}
+                >
+                  {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Switch to {theme === "dark" ? "Light" : "Dark"} Mode
+              </TooltipContent>
+            </Tooltip>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 ${buttonHoverColor} rounded-full`}
+                  onClick={handleUpload}
+                >
+                  <Play size={18} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="bottom"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Run AI Analysis
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+      <div className="min-[400px]:hidden flex justify-center">
+        <TooltipProvider delayDuration={200}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                onClick={() => setCheckType(checkType === "qc" ? "path" : "qc")}
+              >
+                Switch to {checkType === "qc" ? "Pathology" : "QC"}
+              </button>
+            </TooltipTrigger>
+            <TooltipContent
+              side="bottom"
+              className="px-3 py-1.5 text-xs font-medium shadow-lg"
+            >
+              Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
+      </div>
+      <ToolBar
+        theme={theme}
+        barBgColor={barBgColor}
+        borderColor={borderColor}
+        handleUndo={handleUndo}
+        handleDownloadWithAnnotations={handleDownloadWithAnnotations}
+        setCurrentTool={setCurrentTool}
+      />
+      <div className="flex flex-1 overflow-hidden">
+        <div
+          className={`w-10 ${panelBgColor} ${borderColor} border-r flex flex-col items-center py-2 gap-3`}
+        >
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 rounded-full ${buttonHoverColor} ${
+                    isAnnotationEnabled ? buttonSelectColor : ""
+                  }`}
+                  onClick={() => setIsAnnotationEnabled(!isAnnotationEnabled)}
+                >
+                  <Highlighter size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                {isAnnotationEnabled ? "Off" : "On"} Annotation
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`p-2 rounded-full ${buttonHoverColor}`}
+                  onClick={addLayer}
+                >
+                  <Layers size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Add Layer
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div
+          className="flex justify-center overflow-y-scroll scrollbar-hide relative overflow-hidden"
+          style={{ width: "calc(100% - 4.5rem)" }}
+        >
+          {isLoading[selectedLayer] && (
+            <div
+              className={`absolute z-40 inset-0 flex items-center justify-center ${bgColor} bg-opacity-50`}
+            >
+              <div
+                className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${borderColorForLoader}`}
+              ></div>
+            </div>
+          )}
+          {fullScreenLayer && (
+            <div className={`w-full grid grid-cols-1`}>
+              <div key={fullScreenLayer.id} className="relative">
+                {!fullScreenLayer.file ? (
+                  <div
+                    {...getRootProps({
+                      onClick: () => setSelectedLayer(fullScreenLayer.id),
+                    })}
+                    className={`w-full h-full min-h-[300px] flex flex-col justify-center items-center border ${
+                      theme === "dark" ? "border-zinc-700" : "border-gray-300"
+                    }`}
+                  >
+                    <input {...getInputProps()}/>
+                    <MdOutlineCloudUpload size={64} className={iconColor} />
+                    <p className={`${iconColor} text-sm text-center px-4`}>
+                      Click or drag image to upload
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    key={fullScreenLayer.id}
+                    className="flex items-center justify-center h-full"
+                    ref={fullScreenLayer.containerRef}
+                  >
+                    <p
+                      className={`${iconColor} absolute top-0 right-0 p-2 cursor-pointer`}
+                      onClick={() => setFullScreenLayer(null)}
+                    >
+                      <Minimize strokeWidth={1.2} size={"20px"} />
+                    </p>
+                    <div className="relative inline-block">
+                      <img
+                        src={URL.createObjectURL(fullScreenLayer.file)}
+                        alt="Uploaded Scan"
+                        className="max-h-[90vh] max-w-full object-contain"
+                        style={{ width: "auto", height: "auto" }}
+                      />
+                      <canvas
+                        ref={fullScreenLayer.canvasRef}
+                        className="absolute top-0 left-0"
+                        style={{ width: "100%", height: "100%" }}
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={endDrawing}
+                        onMouseLeave={() => {
+                          setIsDrawing(false);
+                          drawAnnotations();
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div
+            className={`w-full grid ${
+              layers.length >= 3
+                ? "xl:grid-cols-3 sm:grid-cols-2 grid-cols-1"
+                : layers.length === 2
+                ? "xl:grid-cols-2 sm:grid-cols-2 grid-cols-1"
+                : "grid-cols-1"
+            } ${fullScreenLayer && "hidden"}`}
+          >
+            {layers.map((layer) => (
+              <div key={layer.id} className="relative">
+                {layers.length !== 1 && (
+                  <LayerActionMenu
+                    layer={layer}
+                    theme={theme}
+                    handleDeleteLayer={handleDeleteLayer}
+                  />
+                )}
+                {!layer.file ? (
+                  <div
+                    {...getRootProps({
+                      onClick: () => setSelectedLayer(layer.id),
+                    })}
+                    className={`w-full h-full min-h-[300px] flex flex-col justify-center items-center border ${
+                      theme === "dark" ? "border-zinc-700" : "border-gray-200"
+                    }`}
+                  >
+                    <input {...getInputProps()} />
+                    <MdOutlineCloudUpload size={64} className={iconColor} />
+                    <p className={`${iconColor} text-sm text-center px-4`}>
+                      Click or drag image to upload
+                    </p>
+                  </div>
+                ) : (
+                  <div
+                    key={layer.id}
+                    className={`flex items-center justify-center h-full border ${
+                      theme === "dark" ? "border-zinc-700" : "border-gray-200"
+                    }`}
+                    ref={layer.containerRef}
+                  >
+                    <LayerOptions
+                      layer={layer}
+                      theme={theme}
+                      setFullScreenLayer={setFullScreenLayer}
+                      handleDeleteLayer={handleDeleteLayer}
+                      handleDeleteLayerImg={() => handleRemoveImage(layer.id)}
+                    />
+                    <div className="relative inline-block">
+                      <img
+                        src={URL.createObjectURL(layer.file)}
+                        alt="Uploaded Scan"
+                        className="max-h-[90vh] max-w-full object-contain"
+                        style={{ width: "auto", height: "auto" }}
+                      />
+                      <canvas
+                        ref={layer.canvasRef}
+                        className="absolute top-0 left-0"
+                        // style={{ width: "100%", height: "100%" }}
+                        onMouseDown={startDrawing}
+                        onMouseMove={draw}
+                        onMouseUp={endDrawing}
+                        onMouseLeave={() => {
+                          setIsDrawing(false);
+                          drawAnnotations();
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+        <div
+          className={`transition-all duration-300 z-30 fixed right-0 h-svh ease-in-out ${
+            infoPanelOpen ? "max-[400px]:w-full w-80" : "w-8"
+          } ${panelBgColor} ${borderColor} border-l flex flex-col`}
+        >
+          <button
+            onClick={() => setInfoPanelOpen(!infoPanelOpen)}
+            className={`p-2 ${buttonHoverColor} flex justify-center items-center h-10 border-b ${borderColor}`}
+          >
+            {infoPanelOpen ? (
+              <ChevronRight size={18} />
+            ) : (
+              <ChevronLeft size={18} />
+            )}
+          </button>
+          {infoPanelOpen && (
+            <div className="p-4">
+              <h3 className="text-lg font-semibold">Annotations</h3>
+              <p className="text-sm">List of annotations will appear here.</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}

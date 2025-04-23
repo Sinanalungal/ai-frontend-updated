@@ -1,11 +1,13 @@
 import './App.css'
-import Viewer from './components/Viewer'
+import LayerViewer from './components/LayerViewer/LayerViewer'
+import Viewer from './components/Viewer/Viewer'
 
 function App() {
 
   return (
     <>
-      <Viewer/>
+      {/* <Viewer/> */}
+      <LayerViewer/>
     </>
   )
 }

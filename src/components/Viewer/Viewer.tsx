@@ -676,6 +676,8 @@ export default function Viewer() {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
+    
+    
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;

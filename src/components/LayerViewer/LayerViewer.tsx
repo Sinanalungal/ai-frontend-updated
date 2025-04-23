@@ -24,6 +24,9 @@ import { useDropzone } from "react-dropzone";
 import LayerOptions from "./LayerOptions";
 import LayerActionMenu from "./LayerActionMenu";
 import { ToolBar } from "./Toolbar";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import RenderOPGAnnotationsList from "../Viewer/RenderOpgAnnotationsList";
+
 
 const SNAP_THRESHOLD = 10;
 
@@ -111,6 +114,9 @@ export default function LayerViewer() {
     },
   ]);
 
+  console.log(layers,"this si th elayers");
+  
+
   const [fullScreenLayer, setFullScreenLayer] = useState<Layer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
@@ -120,9 +126,9 @@ export default function LayerViewer() {
     setTheme(theme === "dark" ? "light" : "dark");
   };
 
-  const handleRemoveImage = (layerId: number) => {
-    setLayers((prev) =>
-      prev.map((layer) =>
+    const handleRemoveImage = (layerId: number) => {
+    setLayers((prevLayers) => {
+      const updatedLayers = prevLayers.map((layer) =>
         layer.id === layerId
           ? {
               ...layer,
@@ -133,16 +139,25 @@ export default function LayerViewer() {
               response: null,
             }
           : layer
-      )
-    );
-    setImageSizes((prev) =>
-      prev.map((size, index) =>
-        layers[index].id === layerId ? { width: 0, height: 0 } : size
-      )
-    );
+      );
+  
+      // Update imageSizes based on the updated layers
+      setImageSizes((prevSizes) =>
+        prevSizes.map((size, index) => {
+          const layer = updatedLayers[index]; // Use the updated layers
+          if (!layer) return size; // Fallback for undefined layers
+  
+          return layer.id === layerId ? { width: 0, height: 0 } : size;
+        })
+      );
+  
+      return updatedLayers;
+    });
+  
     setIsDrawing(false);
     setIsPolygonDrawing(false);
     setCurrentPoints([]);
+  
     if (fullScreenLayer?.id === layerId) {
       setFullScreenLayer(null);
     }
@@ -249,12 +264,8 @@ export default function LayerViewer() {
     );
   };
 
-    useEffect(() => {
-    console.log("Layers:", layers);
-    console.log("Image Sizes:", imageSizes);
-  }, [layers, imageSizes]);
-
-    const onDrop = useCallback(
+  
+  const onDrop = useCallback(
     (acceptedFiles: File[]) => {
       try {
         const file = acceptedFiles[0];
@@ -262,12 +273,12 @@ export default function LayerViewer() {
           toast.error("No file selected");
           return;
         }
-  
+
         if (!file.type.startsWith("image/")) {
           toast.error("Please upload an image file");
           return;
         }
-  
+
         const img = new Image();
         img.onload = () => {
           // Update imageSizes safely
@@ -275,13 +286,13 @@ export default function LayerViewer() {
             prev.map((size, index) => {
               const layer = layers[index];
               if (!layer) return size; // Fallback for undefined layers
-  
+
               return layer.id === selectedLayer
                 ? { width: img.width, height: img.height }
                 : size;
             })
           );
-  
+
           // Update layers with the new file
           setLayers((prev) =>
             prev.map((layer) =>
@@ -298,11 +309,11 @@ export default function LayerViewer() {
             )
           );
         };
-  
+
         img.onerror = () => {
           toast.error("Failed to load image");
         };
-  
+
         img.src = URL.createObjectURL(file);
       } catch (error) {
         console.error("Upload error:", error);
@@ -463,7 +474,10 @@ export default function LayerViewer() {
 
               ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
               for (let i = 1; i < coord.poly.length; i++) {
-                ctx.lineTo(coord.poly[i][0] * scaleX, coord.poly[i][1] * scaleY);
+                ctx.lineTo(
+                  coord.poly[i][0] * scaleX,
+                  coord.poly[i][1] * scaleY
+                );
               }
               ctx.closePath();
               if (coord.showBackground) ctx.fill();
@@ -571,7 +585,10 @@ export default function LayerViewer() {
           } else if (currentTool === "polygon") {
             ctx.moveTo(currentPoints[0] * scaleX, currentPoints[1] * scaleY);
             for (let i = 2; i < currentPoints.length; i += 2) {
-              ctx.lineTo(currentPoints[i] * scaleX, currentPoints[i + 1] * scaleY);
+              ctx.lineTo(
+                currentPoints[i] * scaleX,
+                currentPoints[i + 1] * scaleY
+              );
             }
             ctx.stroke();
           }
@@ -629,7 +646,34 @@ export default function LayerViewer() {
     drawAnnotations();
   }, [imageSizes, layers, fullScreenLayer, drawAnnotations]);
 
-    const addLayer = () => {
+    const handleDeleteLayer = (id: number) => {
+    if (layers.length === 1) {
+      toast.error("Cannot delete the last layer");
+      return;
+    }
+  
+    setLayers((prevLayers) => {
+      const updatedLayers = prevLayers.filter((layer) => layer.id !== id);
+  
+      // Update imageSizes based on the updated layers
+      setImageSizes((prevSizes) =>
+        prevSizes.filter((_, index) => updatedLayers[index]?.id !== id)
+      );
+  
+      // Update selectedLayer to the first available layer if the deleted layer was selected
+      if (selectedLayer === id) {
+        setSelectedLayer(updatedLayers.length > 0 ? updatedLayers[0].id : 0);
+      }
+  
+      return updatedLayers;
+    });
+  
+    if (fullScreenLayer?.id === id) {
+      setFullScreenLayer(null);
+    }
+  };
+  
+  const addLayer = () => {
     setLayers((prevLayers) => {
       if (prevLayers.length >= 6) {
         toast.error("Maximum of 6 layers allowed");
@@ -654,29 +698,11 @@ export default function LayerViewer() {
       // Add a new entry to imageSizes for the new layer
       setImageSizes((prev) => [...prev, { width: 0, height: 0 }]);
   
+      // Automatically select the new layer
+      setSelectedLayer(newId);
+  
       return [...prevLayers, newLayer];
     });
-  };
-  
-  const handleDeleteLayer = (id: number) => {
-    if (layers.length === 1) {
-      toast.error("Cannot delete the last layer");
-      return;
-    }
-  
-    setLayers((prev) => prev.filter((layer) => layer.id !== id));
-  
-    // Remove the corresponding entry from imageSizes
-    setImageSizes((prev) =>
-      prev.filter((_, index) => layers[index].id !== id)
-    );
-  
-    if (selectedLayer === id) {
-      setSelectedLayer(layers[0].id);
-    }
-    if (fullScreenLayer?.id === id) {
-      setFullScreenLayer(null);
-    }
   };
 
   const handleToggleFullscreen = (layer: Layer) => {
@@ -967,8 +993,8 @@ export default function LayerViewer() {
           });
         });
 
-        layer.drawings.forEach((drawing) =>
-          drawShape(tempCtx, drawing, 1, 1) // Use 1:1 scale for download
+        layer.drawings.forEach(
+          (drawing) => drawShape(tempCtx, drawing, 1, 1) // Use 1:1 scale for download
         );
       }
 
@@ -1016,6 +1042,8 @@ export default function LayerViewer() {
   const buttonHoverColor =
     theme === "dark" ? "hover:bg-zinc-700" : "hover:bg-gray-200";
   const buttonSelectColor = theme === "dark" ? "bg-zinc-700" : "bg-gray-200";
+  const secondaryTextColor =
+    theme === "dark" ? "text-zinc-400" : "text-gray-500";
   const panelBgColor = theme === "dark" ? "bg-zinc-800" : "bg-gray-50";
 
   return (
@@ -1192,15 +1220,24 @@ export default function LayerViewer() {
                     className="flex items-center justify-center h-full"
                     ref={fullScreenLayer.containerRef}
                   >
-                    <LayerOptions
-                      layer={fullScreenLayer}
-                      theme={theme}
-                      setFullScreenLayer={setFullScreenLayer}
-                      handleDeleteLayer={handleDeleteLayer}
-                      handleDeleteLayerImg={() =>
-                        handleRemoveImage(fullScreenLayer.id)
-                      }
-                    />
+                    {fullScreenLayer ? (
+                      <div className="absolute top-0 right-0 z-20 p-2 group">
+                        {/* Trigger icon */}
+                        <p className={`${iconColor} cursor-pointer`} onClick={()=>setFullScreenLayer(null)}>
+                          <Minimize strokeWidth={1.2} size={"20px"} />
+                        </p>
+                      </div>
+                    ) : (
+                      <LayerOptions
+                        layer={fullScreenLayer}
+                        theme={theme}
+                        setFullScreenLayer={setFullScreenLayer}
+                        handleDeleteLayer={handleDeleteLayer}
+                        handleDeleteLayerImg={() =>
+                          handleRemoveImage(fullScreenLayer.id)
+                        }
+                      />
+                    )}
                     <div className="relative inline-block">
                       <img
                         src={URL.createObjectURL(fullScreenLayer.file)}
@@ -1312,15 +1349,43 @@ export default function LayerViewer() {
             className={`p-2 ${buttonHoverColor} flex justify-center items-center h-10 border-b ${borderColor}`}
           >
             {infoPanelOpen ? (
-              <ChevronRight size={18} />)
-            : (
+              <ChevronRight size={18} />
+            ) : (
               <ChevronLeft size={18} />
             )}
           </button>
           {infoPanelOpen && (
-            <div className="p-4">
-              <h3 className="text-lg font-semibold">Annotations</h3>
-              <p className="text-sm">List of annotations will appear here.</p>
+            <div className="p-4 overflow-y-scroll scrollbar-hide h-svh">
+              <h3 className="text-lg font-semibold pb-1">Annotations</h3>
+              <Tabs defaultValue="OPG" className="w-full">
+                <TabsList
+                  className={`grid w-full grid-cols-2 border ${
+                    theme === "dark" ? "border-zinc-600" : "border-gray-200"
+                  }`}
+                >
+                  <TabsTrigger value="OPG">OPG</TabsTrigger>
+                  <TabsTrigger value="MARKINGS">MARKINGS</TabsTrigger>
+                </TabsList>
+                <TabsContent value="OPG" className="mt-2 overflow-y-scroll scrollbar-hide mb-2 ">
+                  {layers.map((layer)=>{
+                    return(
+                      <>
+                      <p className="py-2">Layer{layer.id + 1}</p>
+                      <RenderOPGAnnotationsList
+                    annotations={layer?.annotations}
+                    theme={theme}
+                    // editingId={editingId}
+                    // setEditingId={setEditingId}
+                    // setAnnotations={setAnnotations}
+                    textColor={textColor}
+                    secondaryTextColor={secondaryTextColor}
+                  />
+                      </>
+                    )
+                  })}
+                </TabsContent>
+               
+              </Tabs>
             </div>
           )}
         </div>

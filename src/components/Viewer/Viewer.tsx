@@ -96,7 +96,7 @@ const SNAP_THRESHOLD = 10;
 
 export default function Viewer() {
   const [theme, setTheme] = useState("dark");
-  const [infoPanelOpen, setInfoPanelOpen] = useState(true);
+  const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [checkType, setCheckType] = useState<"qc" | "path">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
@@ -1754,7 +1754,7 @@ export default function Viewer() {
                 side="right"
                 className="px-3 py-1.5 text-sm font-medium shadow-lg"
               >
-                Add Layer
+                Switch to Layer Based Viewer
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>

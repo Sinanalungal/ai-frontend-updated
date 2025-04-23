@@ -144,7 +144,7 @@ const RenderOPGAnnotationsList = ({
 
   return (
     <div className="space-y-2 text-sm">
-      {annotations.map((annotation: any) => (
+      {annotations?.map((annotation: any) => (
         <div key={annotation.class} className="mb-4">
           {annotation.roi_xyxy.map((coord: any) => (
             <div

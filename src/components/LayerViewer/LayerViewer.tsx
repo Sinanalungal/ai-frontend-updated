@@ -1908,9 +1908,10 @@ export default function LayerViewer() {
                   ) : (
                     <div
                       className={`flex items-center justify-center h-full border ${
-                        theme === "dark" ? "border-zinc-700" : "border-gray-200"
+                        (layer.id!=selectedLayer) ?theme === "dark" ? "border-zinc-700" : "border-gray-200":"border-2  border-blue-400"
                       }`}
                       ref={layer.containerRef}
+                      onClick={()=>setSelectedLayer(layer.id)}
                     >
                       <LayerOptions
                         layer={layer}

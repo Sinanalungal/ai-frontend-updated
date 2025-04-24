@@ -94,13 +94,13 @@ interface Layer {
   response: UploadResponse | null;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   containerRef: React.RefObject<HTMLDivElement>;
+  checkType: "qc" | "path";
 }
 
 export default function LayerViewer() {
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [selectedLayer, setSelectedLayer] = useState<number>(0);
-  const [checkType, setCheckType] = useState<"qc" | "path">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
   const [currentTool, setCurrentTool] = useState<
     "select" | "move" | "reshape" | "rectangle" | "line" | "point" | "polygon" | "measure"
@@ -117,8 +117,10 @@ export default function LayerViewer() {
       response: null,
       canvasRef: React.createRef<HTMLCanvasElement>(),
       containerRef: React.createRef<HTMLDivElement>(),
+      checkType: "qc",
     },
   ]);
+  console.log(layers,"layers");
   const [fullScreenLayer, setFullScreenLayer] = useState<Layer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
@@ -132,12 +134,13 @@ export default function LayerViewer() {
   const [showSelecting, setShowSelecting] = useState(false);
   const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
 
-  console.log(layers,'this si the layers');
-  
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
   };
+
+  
 
   const handleRemoveImage = (layerId: number) => {
     setLayers((prevLayers) => {
@@ -192,7 +195,7 @@ export default function LayerViewer() {
   };
 
   const handleUpload = async () => {
-    const layer = layers[selectedLayer];
+    const layer = layers.find((l) => l.id === selectedLayer);
     if (!layer?.file) return;
 
     setIsLoading((prev) => {
@@ -203,7 +206,7 @@ export default function LayerViewer() {
 
     const formData = new FormData();
     formData.append("file", layer.file);
-    formData.append("model_name", checkType);
+    formData.append("model_name", layer.checkType);
 
     try {
       const res = await axios.post(
@@ -254,12 +257,12 @@ export default function LayerViewer() {
         label: (index + 1).toString(),
         strokeColor: classColors[className]
           ? classColors[className][1]
-          : "rgb(255,0,0)",
+          : "#FF0000",
         bgColor: classColors[className]
           ? classColors[className][0]
           : "rgba(255, 0, 0, 0.5)",
         showStroke: true,
-        showBackground: checkType === "path",
+        showBackground: layers.find((l) => l.id === selectedLayer)?.checkType === "path",
         openDrawer: false,
         showLabel: false,
       });
@@ -348,15 +351,9 @@ export default function LayerViewer() {
     if (!drawing.visible) return;
 
     ctx.beginPath();
-    ctx.strokeStyle =
-      drawing.showStroke && drawing.strokeColor
-        ? drawing.strokeColor
-        : "transparent";
-    ctx.fillStyle =
-      drawing.showBackground && drawing.bgColor
-        ? drawing.bgColor
-        : "transparent";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = drawing.showStroke ? drawing.strokeColor : "transparent";
+    ctx.fillStyle = drawing.showBackground ? drawing.bgColor : "transparent";
+    ctx.lineWidth = 2;
 
     const points = drawing.points;
     switch (drawing.type) {
@@ -525,12 +522,13 @@ export default function LayerViewer() {
       for (const coord of annotation.roi_xyxy) {
         if (!coord.visible) continue;
 
-        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+        if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
           const scaledPoly = coord.poly.map(([px, py]) => [
             px * scaleX,
             py * scaleY,
           ]);
-          if (isPointInPolygon(x, y, scaledPoly)) {
+          const flattenedPoly = scaledPoly.flat();
+          if (isPointInPolygon(x, y, flattenedPoly)) {
             return {
               type: "annotation",
               className: annotation.class,
@@ -759,16 +757,10 @@ export default function LayerViewer() {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
-            if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+            if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
               ctx.beginPath();
-              ctx.fillStyle =
-                coord.showBackground && coord.bgColor
-                  ? coord.bgColor
-                  : "transparent";
-              ctx.strokeStyle =
-                coord.showStroke && coord.strokeColor
-                  ? coord.strokeColor
-                  : "transparent";
+              ctx.fillStyle = coord.showBackground ? coord.bgColor : "transparent";
+              ctx.strokeStyle = coord.showStroke ? coord.strokeColor : "transparent";
               ctx.lineWidth = 0.8;
 
               ctx.moveTo(coord.poly[0][0] * scaleX, coord.poly[0][1] * scaleY);
@@ -781,40 +773,6 @@ export default function LayerViewer() {
               ctx.closePath();
               if (coord.showBackground) ctx.fill();
               if (coord.showStroke) ctx.stroke();
-
-                            if (coord.showLabel) {
-                const label = `${coord.label} ${annotation.class}`.trim();
-                if (label) {
-                  ctx.font = "10px Poppins";
-                  const textMetrics = ctx.measureText(label);
-                  const labelWidth = textMetrics.width + 10;
-                  const labelHeight = 20;
-              
-                  // Calculate the label's position
-                  let labelX = scaledX1;
-                  let labelY = scaledY1 - labelHeight;
-              
-                  // Adjust position if the label goes outside the canvas
-                  if (labelX + labelWidth > displayedWidth) {
-                    labelX = displayedWidth - labelWidth - 5; // Move left
-                  }
-                  if (labelX < 0) {
-                    labelX = 5; // Move right
-                  }
-                  if (labelY < 0) {
-                    labelY = scaledY1 + 5; // Move below the shape
-                  }
-              
-                  // Draw the label background
-                  ctx.fillStyle =
-                    theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
-                  ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
-              
-                  // Draw the label text
-                  ctx.fillStyle = "#FFFFFF";
-                  ctx.fillText(label, labelX + 5, labelY + 15);
-                }
-              }
             } else {
               const [x1, y1, x2, y2] = coord.coordinates;
               const scaledX1 = x1 * scaleX;
@@ -842,6 +800,7 @@ export default function LayerViewer() {
                   scaledY2 - scaledY1
                 );
               }
+
               if (coord.showLabel) {
                 const label = `${coord.label} ${annotation.class}`.trim();
                 if (label) {
@@ -849,28 +808,24 @@ export default function LayerViewer() {
                   const textMetrics = ctx.measureText(label);
                   const labelWidth = textMetrics.width + 10;
                   const labelHeight = 20;
-              
-                  // Calculate the label's position
+
                   let labelX = scaledX1;
                   let labelY = scaledY1 - labelHeight;
-              
-                  // Adjust position if the label goes outside the canvas
+
                   if (labelX + labelWidth > displayedWidth) {
-                    labelX = displayedWidth - labelWidth - 5; // Move left
+                    labelX = displayedWidth - labelWidth - 5;
                   }
                   if (labelX < 0) {
-                    labelX = 5; // Move right
+                    labelX = 5;
                   }
                   if (labelY < 0) {
-                    labelY = scaledY1 + 5; // Move below the shape
+                    labelY = scaledY1 + 5;
                   }
-              
-                  // Draw the label background
+
                   ctx.fillStyle =
                     theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
                   ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
-              
-                  // Draw the label text
+
                   ctx.fillStyle = "#FFFFFF";
                   ctx.fillText(label, labelX + 5, labelY + 15);
                 }
@@ -889,11 +844,18 @@ export default function LayerViewer() {
           layer.id === (fullScreenLayer ? fullScreenLayer.id : selectedLayer)
         ) {
           ctx.beginPath();
-          ctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
+          ctx.strokeStyle = "#FF0000";
+          ctx.fillStyle = "rgba(255, 0, 0, 0.2)";
           ctx.lineWidth = 1;
 
           if (currentTool === "rectangle") {
             ctx.strokeRect(
+              currentPoints[0] * scaleX,
+              currentPoints[1] * scaleY,
+              (currentPoints[2] - currentPoints[0]) * scaleX,
+              (currentPoints[3] - currentPoints[1]) * scaleY
+            );
+            ctx.fillRect(
               currentPoints[0] * scaleX,
               currentPoints[1] * scaleY,
               (currentPoints[2] - currentPoints[0]) * scaleX,
@@ -921,7 +883,6 @@ export default function LayerViewer() {
       selectedLayer,
       isAnnotationEnabled,
       imageSizes,
-      checkType,
       theme,
       fullScreenLayer,
       isDrawing,
@@ -1011,9 +972,11 @@ export default function LayerViewer() {
         response: null,
         canvasRef: React.createRef<HTMLCanvasElement>(),
         containerRef: React.createRef<HTMLDivElement>(),
+        checkType: "qc",
       };
 
       setImageSizes((prev) => [...prev, { width: 0, height: 0 }]);
+      setIsLoading((prev) => [...prev, false]);
       setSelectedLayer(newId);
 
       return [...prevLayers, newLayer];
@@ -1024,16 +987,26 @@ export default function LayerViewer() {
     setFullScreenLayer(fullScreenLayer ? null : layer);
   };
 
+  const toggleLayerCheckType = (layerId: number) => {
+    setLayers((prev) =>
+      prev.map((layer) =>
+        layer.id === layerId
+          ? { ...layer, checkType: layer.checkType === "qc" ? "path" : "qc" }
+          : layer
+      )
+    );
+  };
+
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (
       !isAnnotationEnabled ||
       (currentTool === "select" && !isTransforming)
     ) {
-      handleShapeClick(e, fullScreenLayer || layers[selectedLayer]);
+      handleShapeClick(e, fullScreenLayer || layers.find((l) => l.id === selectedLayer)!);
       return;
     }
 
-    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
     const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
 
@@ -1103,8 +1076,8 @@ export default function LayerViewer() {
                         type: "polygon",
                         points: currentPoints,
                         visible: true,
-                        strokeColor: "rgb(255,0,0)",
-                        bgColor: "rgba(255,0,0,0.2)",
+                        strokeColor: "#FF0000",
+                        bgColor: "rgba(255, 0, 0, 0.2)",
                         showStroke: true,
                         showBackground: true,
                         label: "",
@@ -1138,8 +1111,8 @@ export default function LayerViewer() {
                     type: "point",
                     points: [scaledX, scaledY],
                     visible: true,
-                    strokeColor: "rgb(255,0,0)",
-                    bgColor: "rgba(255,0,0,0.2)",
+                    strokeColor: "#FF0000",
+                    bgColor: "rgba(255, 0, 0, 0.2)",
                     showStroke: true,
                     showBackground: true,
                     label: "",
@@ -1168,7 +1141,7 @@ export default function LayerViewer() {
     )
       return;
 
-    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
     const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
 
@@ -1198,34 +1171,38 @@ export default function LayerViewer() {
       const dx = scaledX - transformOrigin.x;
       const dy = scaledY - transformOrigin.y;
 
-      setLayers((prev) =>
-        prev.map((layer) =>
-          layer.id === targetLayer.id
-            ? {
-                ...layer,
-                drawings: layer.drawings.map((d) => {
-                  if (d.id === selectedShape) {
-                    return {
-                      ...d,
-                      points: d.points.map((point, index) =>
-                        index % 2 === 0 ? point + dx : point + dy
-                      ),
-                      transform: {
-                        ...d.transform,
-                        translate: {
-                          x: (d.transform?.translate?.x || 0) + dx,
-                          y: (d.transform?.translate?.y || 0) + dy,
+        setLayers((prev) =>
+          prev.map((layer) =>
+            layer.id === targetLayer.id
+              ? {
+                  ...layer,
+                  drawings: layer.drawings.map((d) => {
+                    if (d.id === selectedShape) {
+                      const transform = d.transform || {
+                        scale: 1,
+                        rotation: 0,
+                        translate: { x: 0, y: 0 },
+                      };
+                      return {
+                        ...d,
+                        points: d.points.map((point, index) =>
+                          index % 2 === 0 ? point + dx : point + dy
+                        ),
+                        transform: {
+                          ...transform,
+                          translate: {
+                            x: transform.translate.x + dx,
+                            y: transform.translate.y + dy,
+                          },
                         },
-                      },
-                    };
-                  }
-                  return d;
-                }),
-              }
-            : layer
-        )
+                      };
+                    }
+                    return d;
+                  }),
+                }
+              : layer
+          )
       );
-
       setTransformOrigin({ x: scaledX, y: scaledY });
       drawAnnotations(targetLayer.id);
       return;
@@ -1310,7 +1287,7 @@ export default function LayerViewer() {
 
     if (!isDrawing && !isPolygonDrawing) return;
 
-    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
     const targetLayerId = targetLayer.id;
 
     if (currentTool === "polygon" && isPolygonDrawing) {
@@ -1320,8 +1297,8 @@ export default function LayerViewer() {
         type: currentTool as "rectangle" | "line",
         points: currentPoints,
         visible: true,
-        strokeColor: "rgb(255,0,0)",
-        bgColor: "rgba(255,0,0,0.2)",
+        strokeColor: "#FF0000",
+        bgColor: "rgba(255, 0, 0, 0.2)",
         showStroke: true,
         showBackground: true,
         label: "",
@@ -1353,7 +1330,7 @@ export default function LayerViewer() {
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isPolygonDrawing || currentTool !== "polygon") return;
 
-    const targetLayer = fullScreenLayer || layers[selectedLayer];
+    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
     const targetLayerId = targetLayer.id;
 
     if (currentPoints.length >= 6) {
@@ -1368,8 +1345,8 @@ export default function LayerViewer() {
                     type: "polygon",
                     points: currentPoints,
                     visible: true,
-                    strokeColor: "rgb(255,0,0)",
-                    bgColor: "rgba(255,0,0,0.2)",
+                    strokeColor: "#FF0000",
+                    bgColor: "rgba(255, 0, 0, 0.2)",
                     showStroke: true,
                     showBackground: true,
                     label: "",
@@ -1424,7 +1401,7 @@ export default function LayerViewer() {
   };
 
   const handleDownloadWithAnnotations = () => {
-    const layer = fullScreenLayer || layers[selectedLayer];
+    const layer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
     if (!layer?.file) {
       toast.error("No image to download");
       return;
@@ -1450,16 +1427,10 @@ export default function LayerViewer() {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
-            if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+            if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
               tempCtx.beginPath();
-              tempCtx.fillStyle =
-                coord.showBackground && coord.bgColor
-                  ? coord.bgColor
-                  : "transparent";
-              tempCtx.strokeStyle =
-                coord.showStroke && coord.strokeColor
-                  ? coord.strokeColor
-                  : "transparent";
+              tempCtx.fillStyle = coord.showBackground ? coord.bgColor : "transparent";
+              tempCtx.strokeStyle = coord.showStroke ? coord.strokeColor : "transparent";
               tempCtx.moveTo(coord.poly[0][0], coord.poly[0][1]);
               for (let i = 1; i < coord.poly.length; i++) {
                 tempCtx.lineTo(coord.poly[i][0], coord.poly[i][1]);
@@ -1542,18 +1513,18 @@ export default function LayerViewer() {
   useEffect(() => {
     const canvas = fullScreenLayer
       ? fullScreenLayer.canvasRef.current
-      : layers[selectedLayer]?.canvasRef?.current;
+      : layers.find((l) => l.id === selectedLayer)?.canvasRef?.current;
     if (!canvas) return;
 
     canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
   }, [currentTool, layers, selectedLayer, fullScreenLayer]);
 
   useEffect(() => {
-    const layer = layers[selectedLayer];
+    const layer = layers.find((l) => l.id === selectedLayer);
     if (layer?.file && !layer.response) {
       handleUpload();
     }
-  }, [layers, selectedLayer, checkType]);
+  }, [layers, selectedLayer]);
 
   useEffect(() => {
     const handleMouseUp = () => {
@@ -1601,19 +1572,17 @@ export default function LayerViewer() {
               <TooltipTrigger asChild>
                 <button
                   className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                  onClick={() =>
-                    setCheckType(checkType === "qc" ? "path" : "qc")
-                  }
+                  onClick={() => toggleLayerCheckType(selectedLayer)}
                 >
                   <span className="max-sm:hidden">Switch to</span>
-                  <span>{checkType === "qc" ? "Pathology" : "QC"}</span>
+                  <span>{layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
                 className="px-3 py-1.5 text-xs font-medium shadow-lg"
               >
-                Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+                Switch to {layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -1657,16 +1626,16 @@ export default function LayerViewer() {
             <TooltipTrigger asChild>
               <button
                 className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                onClick={() => setCheckType(checkType === "qc" ? "path" : "qc")}
+                onClick={() => toggleLayerCheckType(selectedLayer)}
               >
-                Switch to {checkType === "qc" ? "Pathology" : "QC"}
+                Switch to {layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}
               </button>
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
               className="px-3 py-1.5 text-xs font-medium shadow-lg"
             >
-              Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+              Switch to {layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -1908,10 +1877,14 @@ export default function LayerViewer() {
                   ) : (
                     <div
                       className={`flex items-center justify-center h-full border ${
-                        (layer.id!=selectedLayer) ?theme === "dark" ? "border-zinc-700" : "border-gray-200":"border-2  border-blue-400"
+                        layer.id !== selectedLayer
+                          ? theme === "dark"
+                            ? "border-zinc-700"
+                            : "border-gray-200"
+                          : "border-2 border-blue-400"
                       }`}
                       ref={layer.containerRef}
-                      onClick={()=>setSelectedLayer(layer.id)}
+                      onClick={() => setSelectedLayer(layer.id)}
                     >
                       <LayerOptions
                         layer={layer}

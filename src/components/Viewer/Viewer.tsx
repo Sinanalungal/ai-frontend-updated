@@ -506,17 +506,28 @@ export default function Viewer() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const point = getScaledPoint(e);
-    if (!point) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
 
-    const { x, y } = point;
+    const imageElement = containerRef.current?.querySelector("img");
+    if (!imageElement) return;
+
+    const displayedWidth = imageElement.clientWidth;
+    const displayedHeight = imageElement.clientHeight;
+
+    const scaleX = imageSize.width / displayedWidth;
+    const scaleY = imageSize.height / displayedHeight;
+
+    const scaledX = x * scaleX;
+    const scaledY = y * scaleY;
 
     if (currentTool === "move") {
-      const shapeId = findShapeAtPoint(x, y, 1, 1)?.drawingId;
-      if (shapeId) {
+      const shape = findShapeAtPoint(scaledX, scaledY, 1, 1);
+      if (shape?.type === "drawing") {
         setIsTransforming(true);
-        setSelectedShape(shapeId);
-        setTransformOrigin({ x, y });
+        setSelectedShape(shape.drawingId);
+        setTransformOrigin({ x: scaledX, y: scaledY });
         return;
       }
     }
@@ -531,26 +542,26 @@ export default function Viewer() {
     }
 
     if (currentTool === "reshape") {
-      const nearestPoint = findNearestPoint(x, y);
+      const nearestPoint = findNearestPoint(scaledX, scaledY);
       if (nearestPoint) {
         setSelectedDrawingId(nearestPoint.drawingId);
         setSelectedPointIndex(nearestPoint.pointIndex);
         setIsDraggingPoint(true);
         setDraggedPointOffset({
-          x: x - nearestPoint.originalX,
-          y: y - nearestPoint.originalY,
+          x: scaledX - nearestPoint.originalX,
+          y: scaledY - nearestPoint.originalY,
         });
         return;
       }
     } else if (currentTool === "polygon") {
       if (!isPolygonDrawing) {
         setIsPolygonDrawing(true);
-        setCurrentPoints([x, y]);
+        setCurrentPoints([scaledX, scaledY]);
       } else {
         const startX = currentPoints[0];
         const startY = currentPoints[1];
         const distance = Math.sqrt(
-          Math.pow(x - startX, 2) + Math.pow(y - startY, 2)
+          Math.pow(scaledX - startX, 2) + Math.pow(scaledY - startY, 2)
         );
 
         if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
@@ -574,14 +585,14 @@ export default function Viewer() {
           setCurrentPoints([]);
           setShowSelecting(true);
         } else {
-          setCurrentPoints((prev) => [...prev, x, y]);
+          setCurrentPoints((prev) => [...prev, scaledX, scaledY]);
         }
       }
     } else if (currentTool === "point") {
       setDrawingHistory((history) => [...history, [...drawings]]);
       const newDrawing: Drawing = {
         type: "point",
-        points: [x, y],
+        points: [scaledX, scaledY],
         label: ``,
         id: `drawing-${Date.now()}`,
         visible: true,
@@ -597,7 +608,7 @@ export default function Viewer() {
       setShowSelecting(true);
     } else {
       setIsDrawing(true);
-      setStartPoint({ x, y });
+      setStartPoint({ x: scaledX, y: scaledY });
     }
   };
 
@@ -676,8 +687,6 @@ export default function Viewer() {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-    
-    
 
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
@@ -688,16 +697,18 @@ export default function Viewer() {
     const displayedWidth = imageElement.clientWidth;
     const displayedHeight = imageElement.clientHeight;
 
-    const scaleX = displayedWidth / imageSize.width;
-    const scaleY = displayedHeight / imageSize.height;
+    const scaleX = imageSize.width / displayedWidth;
+    const scaleY = imageSize.height / displayedHeight;
+
+    const scaledX = x * scaleX;
+    const scaledY = y * scaleY;
 
     if (isTransforming && selectedShape && currentTool === "move") {
       const drawing = drawings.find((d) => d.id === selectedShape);
       if (!drawing || !transformOrigin) return;
 
-      const dx = x - transformOrigin.x;
-      const dy = y - transformOrigin.y;
-      console.log(dx, dy);
+      const dx = scaledX - transformOrigin.x;
+      const dy = scaledY - transformOrigin.y;
 
       setDrawings(
         drawings.map((d) => {
@@ -720,7 +731,7 @@ export default function Viewer() {
         })
       );
 
-      setTransformOrigin({ x, y });
+      setTransformOrigin({ x: scaledX, y: scaledY });
       drawAnnotations();
       return;
     }
@@ -821,29 +832,29 @@ export default function Viewer() {
     }
   };
 
-  const renderTransformButton = (drawing: Drawing) => {
-    if (!drawing.visible || currentTool !== "move") return null;
+  // const renderTransformButton = (drawing: Drawing) => {
+  //   if (!drawing.visible || currentTool !== "move") return null;
 
-    const x = drawing.points[0] + (drawing.transform?.translate.x || 0);
-    const y = drawing.points[1] + (drawing.transform?.translate.y || 0);
+  //   const x = drawing.points[0] + (drawing.transform?.translate.x || 0);
+  //   const y = drawing.points[1] + (drawing.transform?.translate.y || 0);
 
-    return (
-      <button
-        className={`absolute p-1 rounded-full transform -translate-x-1/2 -translate-y-1/2 cursor-move ${
-          theme === "dark" ? "bg-white" : "bg-white"
-        }`}
-        style={{ left: x, top: y }}
-        onMouseDown={(e) => {
-          e.stopPropagation();
-          setIsTransforming(true);
-          setSelectedShape(drawing.id);
-          setTransformOrigin({ x: e.clientX, y: e.clientY });
-        }}
-      >
-        <Move size={12} color="black" />
-      </button>
-    );
-  };
+  //   return (
+  //     <button
+  //       className={`absolute p-1 rounded-full transform -translate-x-1/2 -translate-y-1/2 cursor-move ${
+  //         theme === "dark" ? "bg-white" : "bg-white"
+  //       }`}
+  //       style={{ left: x, top: y }}
+  //       onMouseDown={(e) => {
+  //         e.stopPropagation();
+  //         setIsTransforming(true);
+  //         setSelectedShape(drawing.id);
+  //         setTransformOrigin({ x: e.clientX, y: e.clientY });
+  //       }}
+  //     >
+  //       <Move size={12} color="black" />
+  //     </button>
+  //   );
+  // };
 
   const endDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (isDraggingPoint) {
@@ -1843,7 +1854,7 @@ export default function Viewer() {
                       drawAnnotations();
                     }}
                   />
-                  {drawings.map((drawing) => renderTransformButton(drawing))}
+                  {/* {drawings.map((drawing) => renderTransformButton(drawing))} */}
                 </div>
               </>
             ) : (

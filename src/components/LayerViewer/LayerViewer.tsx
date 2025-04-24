@@ -782,27 +782,37 @@ export default function LayerViewer() {
               if (coord.showBackground) ctx.fill();
               if (coord.showStroke) ctx.stroke();
 
-              if (coord.showLabel) {
-                const label = `${coord.label}. ${annotation.class}`.trim();
+                            if (coord.showLabel) {
+                const label = `${coord.label} ${annotation.class}`.trim();
                 if (label) {
-                  ctx.font = "12px Poppins";
+                  ctx.font = "10px Poppins";
                   const textMetrics = ctx.measureText(label);
+                  const labelWidth = textMetrics.width + 10;
+                  const labelHeight = 20;
+              
+                  // Calculate the label's position
+                  let labelX = scaledX1;
+                  let labelY = scaledY1 - labelHeight;
+              
+                  // Adjust position if the label goes outside the canvas
+                  if (labelX + labelWidth > displayedWidth) {
+                    labelX = displayedWidth - labelWidth - 5; // Move left
+                  }
+                  if (labelX < 0) {
+                    labelX = 5; // Move right
+                  }
+                  if (labelY < 0) {
+                    labelY = scaledY1 + 5; // Move below the shape
+                  }
+              
+                  // Draw the label background
                   ctx.fillStyle =
-                    theme === "dark"
-                      ? "rgba(0, 0, 0, 0.7)"
-                      : "rgba(0, 0, 0, 0.7)";
-                  ctx.fillRect(
-                    coord.poly[0][0] * scaleX,
-                    coord.poly[0][1] * scaleY - 20,
-                    textMetrics.width + 10,
-                    20
-                  );
+                    theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+                  ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+              
+                  // Draw the label text
                   ctx.fillStyle = "#FFFFFF";
-                  ctx.fillText(
-                    label,
-                    coord.poly[0][0] * scaleX + 5,
-                    coord.poly[0][1] * scaleY - 5
-                  );
+                  ctx.fillText(label, labelX + 5, labelY + 15);
                 }
               }
             } else {
@@ -832,24 +842,37 @@ export default function LayerViewer() {
                   scaledY2 - scaledY1
                 );
               }
-
               if (coord.showLabel) {
                 const label = `${coord.label} ${annotation.class}`.trim();
                 if (label) {
-                  ctx.font = "12px Poppins";
+                  ctx.font = "10px Poppins";
                   const textMetrics = ctx.measureText(label);
+                  const labelWidth = textMetrics.width + 10;
+                  const labelHeight = 20;
+              
+                  // Calculate the label's position
+                  let labelX = scaledX1;
+                  let labelY = scaledY1 - labelHeight;
+              
+                  // Adjust position if the label goes outside the canvas
+                  if (labelX + labelWidth > displayedWidth) {
+                    labelX = displayedWidth - labelWidth - 5; // Move left
+                  }
+                  if (labelX < 0) {
+                    labelX = 5; // Move right
+                  }
+                  if (labelY < 0) {
+                    labelY = scaledY1 + 5; // Move below the shape
+                  }
+              
+                  // Draw the label background
                   ctx.fillStyle =
-                    theme === "dark"
-                      ? "rgba(0, 0, 0, 0.7)"
-                      : "rgba(0, 0, 0, 0.7)";
-                  ctx.fillRect(
-                    scaledX1,
-                    scaledY1 - 20,
-                    textMetrics.width + 10,
-                    20
-                  );
+                    theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+                  ctx.fillRect(labelX, labelY, labelWidth, labelHeight);
+              
+                  // Draw the label text
                   ctx.fillStyle = "#FFFFFF";
-                  ctx.fillText(label, scaledX1 + 5, scaledY1 - 5);
+                  ctx.fillText(label, labelX + 5, labelY + 15);
                 }
               }
             }

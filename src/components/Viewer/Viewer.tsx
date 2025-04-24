@@ -1471,7 +1471,12 @@ export default function Viewer() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
+    canvas.style.cursor =
+      currentTool === "select"
+        ? "default"
+        : currentTool === "move" || currentTool === "reshape"
+        ? "grab"
+        : "crosshair";
   }, [currentTool]);
 
   useEffect(() => {
@@ -1815,7 +1820,7 @@ export default function Viewer() {
               ></div>
             </div>
           )}
-          
+
           <div
             {...(!selectedFile ? getRootProps() : {})}
             className={`text-center relative h-full flex items-center justify-center ${
@@ -1844,7 +1849,11 @@ export default function Viewer() {
                       width: "100%",
                       height: "100%",
                       cursor:
-                        currentTool === "select" ? "default" : "crosshair",
+                        currentTool === "select"
+                          ? "default"
+                          : currentTool === "move" || currentTool === "reshape"
+                          ? "grab"
+                          : "crosshair",
                     }}
                     onMouseDown={startDrawing}
                     onMouseMove={draw}

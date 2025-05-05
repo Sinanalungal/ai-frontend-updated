@@ -1368,7 +1368,7 @@ export default function LayerViewer() {
     drawAnnotations(targetLayer.id);
   };
 
-  const endDrawing = () => {
+    const endDrawing = () => {
     if (isDraggingPoint) {
       setIsDraggingPoint(false);
       setSelectedDrawingId(null);
@@ -1376,15 +1376,21 @@ export default function LayerViewer() {
       setDraggedPointOffset(null);
       return;
     }
-
+  
     if (!isDrawing && !isPolygonDrawing) return;
-
+  
     const targetLayer = fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!;
     const targetLayerId = targetLayer.id;
-
-    if (currentTool === "polygon" && isPolygonDrawing) {
-      return;
-    } else if (isDrawing) {
+  
+    // Validate if the drawing is valid
+    if (isDrawing) {
+      if (currentPoints.length < 4 || (currentPoints[0] === currentPoints[2] && currentPoints[1] === currentPoints[3])) {
+        // If the drawing is invalid (e.g., just a click), reset the state and return
+        setIsDrawing(false);
+        setCurrentPoints([]);
+        return;
+      }
+  
       const newDrawing: Drawing = {
         type: currentTool as "rectangle" | "line",
         points: currentPoints,
@@ -1398,7 +1404,7 @@ export default function LayerViewer() {
         transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
         showLabel: false,
       };
-
+  
       setLayers((prev) =>
         prev.map((layer) =>
           layer.id === targetLayerId
@@ -1415,7 +1421,7 @@ export default function LayerViewer() {
       setShowSelecting(true);
       setSelectionPosition({ x: currentPoints[0], y: currentPoints[1] });
     }
-
+  
     drawAnnotations(targetLayerId);
   };
 

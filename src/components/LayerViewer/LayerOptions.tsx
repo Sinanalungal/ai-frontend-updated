@@ -6,14 +6,19 @@ import {
 } from "@/components/ui/tooltip";
 import { EllipsisVertical, Fullscreen, Trash2, ImageMinus } from "lucide-react";
 import React from "react";
+import { HiOutlineSwitchHorizontal } from "react-icons/hi";
+
 
 const LayerOptions: React.FC<any> = ({
   layer,
   theme,
   setFullScreenLayer,
   handleDeleteLayer,
+  toggleLayerCheckType,
   handleDeleteLayerImg,
 }) => {
+  // console.log(layer,"theeeese layer");
+  
 //   const textColor = theme === "dark" ? "text-gray-900" : "text-gray-900";
   const iconColor = theme === "dark" ? "text-zinc-100" : "text-gray-500";
 
@@ -40,6 +45,16 @@ const LayerOptions: React.FC<any> = ({
             </TooltipTrigger>
             {/* <TooltipContent>Set Fullscreen</TooltipContent> */}
           </Tooltip>
+          <Tooltip>
+          <TooltipTrigger asChild>
+            <button className="w-full flex items-center gap-2 px-4 py-2 text-xs hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-900"
+             onClick={() => toggleLayerCheckType(layer.id)}>
+              <HiOutlineSwitchHorizontal strokeWidth={1.2} size={16} />
+              <span>Switch to {layer.checkType === "qc" ? "Path" : "QC"}</span>
+            </button>
+          </TooltipTrigger>
+        </Tooltip>
+
           <Tooltip>
             <TooltipTrigger asChild>
               <button

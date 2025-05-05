@@ -11,6 +11,7 @@ const RenderCustomAnnotationsList = ({
   setDrawings,
   textColor,
   secondaryTextColor,
+  viewer="default"
 }: any) => {
   const [editingDrawing, setEditingDrawing] = useState<{
     id: string;
@@ -20,53 +21,154 @@ const RenderCustomAnnotationsList = ({
   } | null>(null);
 
   const toggleDrawingVisibility = (drawingId: string) => {
-    setDrawings((prev: any) =>
-      prev.map((drawing: any) => ({
-        ...drawing,
-        visible: drawing.id === drawingId ? !drawing.visible : drawing.visible,
-      }))
-    );
+    if (viewer === "default") {
+      setDrawings((prev: any) =>
+        prev.map((drawing: any) => ({
+          ...drawing,
+          visible: drawing.id === drawingId ? !drawing.visible : drawing.visible,
+        }))
+      );
+    }else if (viewer ==="layer") {
+      setDrawings((prev: any) =>{
+        // console.log("prev", prev)
+        return prev.map((layer: any) => {
+          return {
+            ...layer,
+            drawings: layer?.drawings?.map((drawing: any) => ({
+              ...drawing,
+              visible: drawing.id === drawingId ? !drawing.visible : drawing.visible,
+            })),
+          };
+        })
+      });
+    }
   };
 
   const deleteDrawing = (drawingId: string) => {
-    setDrawings((prev: any) =>
-      prev.filter((drawing: any) => drawing.id !== drawingId)
-    );
+    if (viewer === "default") {
+      setDrawings((prev: any) =>
+        prev.filter((drawing: any) => drawing.id !== drawingId)
+      );
+    } else if (viewer === "layer") {
+      setDrawings((prev: any) =>
+        prev.map((layer: any) => ({
+          ...layer,
+          drawings: layer.drawings.filter(
+            (drawing: any) => drawing.id !== drawingId
+          ),
+        }))
+      );
+    }
   };
+
 
   const ManageDrawerInCustom = (drawingId: string) => {
-    setDrawings((prev: any) =>
-      prev.map((drawing: any) =>
-        drawing.id === drawingId
-          ? { ...drawing, OpenDrawer: !drawing.OpenDrawer }
-          : drawing
-      )
-    );
+    if (viewer === "default") {
+      setDrawings((prev: any) =>
+        prev.map((drawing: any) =>
+          drawing.id === drawingId
+            ? { ...drawing, OpenDrawer: !drawing.OpenDrawer }
+            : drawing
+        )
+      );
+    }
+    else if (viewer === "layer") {
+      setDrawings((prev: any) =>
+        prev.map((layer: any) => ({
+          ...layer,
+          drawings: layer.drawings.map((drawing: any) =>
+            drawing.id === drawingId
+              ? { ...drawing, OpenDrawer: !drawing.OpenDrawer }
+              : drawing
+          ),
+        }))
+      );
+    }
   };
 
+  // Function to update the color of a drawing
+  // Takes the drawing ID, field to update (strokeColor or bgColor), and the new value
   const updateDrawingColor = (
     drawingId: string,
     field: "strokeColor" | "bgColor",
     value: string
   ) => {
-    setDrawings((prev: any) =>
-      prev.map((drawing: any) =>
-        drawing.id === drawingId ? { ...drawing, [field]: value } : drawing
-      )
-    );
+    if (viewer === "default") {
+      setDrawings((prev: any) =>
+        prev.map((drawing: any) =>
+          drawing.id === drawingId
+            ? { ...drawing, [field]: value }
+            : drawing
+        )
+      );
+    } else if (viewer === "layer") {
+      setDrawings((prev: any) =>
+        prev.map((layer: any) => ({
+          ...layer,
+          drawings: layer.drawings.map((drawing: any) =>
+            drawing.id === drawingId
+              ? { ...drawing, [field]: value }
+              : drawing
+          ),
+        }))
+      );
+    }
   };
+
+  
 
   const toggleDrawingDisplay = (
     drawingId: string,
     field: "showStroke" | "showBackground"
   ) => {
-    setDrawings((prev: any) =>
-      prev.map((drawing: any) =>
-        drawing.id === drawingId
-          ? { ...drawing, [field]: !drawing[field] }
-          : drawing
-      )
-    );
+    if (viewer === "default") {
+      setDrawings((prev: any) =>
+        prev.map((drawing: any) =>
+          drawing.id === drawingId
+            ? { ...drawing, [field]: !drawing[field] }
+            : drawing
+        )
+      );
+    } else if (viewer === "layer") {
+      setDrawings((prev: any) =>
+        prev.map((layer: any) => ({
+          ...layer,
+          drawings: layer.drawings.map((drawing: any) =>
+            drawing.id === drawingId
+              ? { ...drawing, [field]: !drawing[field] }
+              : drawing
+          ),
+        }))
+      );
+    }
+  };
+  
+  const writeText = (
+    e:any,
+    drawing:any,
+  ) => {
+    if (viewer === "default") {
+      setDrawings((prev: any) =>
+        prev.map((d: any) => {
+          if (d.id === drawing.id) {
+            return { ...d, label: e.target.value };
+          }
+          return d;
+        })
+      );
+    } else if (viewer === "layer") {
+      setDrawings((prev: any) =>
+        prev.map((layer: any) => ({
+          ...layer,
+          drawings: layer.drawings.map((d: any) => {
+            if (d.id === drawing.id) {
+              return { ...d, label: e.target.value };
+            }
+            return d;
+          }),
+        }))
+      );
+    }
   };
 
   return (
@@ -91,15 +193,7 @@ const RenderCustomAnnotationsList = ({
                     } text-xs px-2 py-1 rounded`}
                     value={drawing.label}
                     onChange={(e) => {
-                      setDrawings((prev: any) =>
-                        prev.map((d: any) => {
-                          if (d.id === drawing.id) {
-                            return { ...d, label: e.target.value };
-                          }
-                          return d;
-                        })
-                      );
-                    }}
+                      writeText(e, drawing);}}
                     onBlur={() => setEditingDrawing(null)}
                     autoFocus
                   />

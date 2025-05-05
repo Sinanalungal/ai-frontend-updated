@@ -53,8 +53,8 @@ interface Annotation {
     bgColor: string;
     showStroke: boolean;
     showBackground: boolean;
-    openDrawer: boolean;
     showLabel: boolean;
+    openDrawer: boolean;
   }[];
 }
 
@@ -88,13 +88,16 @@ interface UploadResponse {
 interface Layer {
   id: number;
   file: File | null;
-  annotations: Annotation[] | null;
+  annotationsQc: Annotation[] | null;
+  annotationsPath: Annotation[] | null;
   drawings: Drawing[];
   drawingHistory: Drawing[][];
-  response: UploadResponse | null;
+  responseQc: UploadResponse | null;
+  responsePath: UploadResponse | null;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   containerRef: React.RefObject<HTMLDivElement>;
   checkType: "qc" | "path";
+  // openDrawer:boolean,
 }
 
 export default function LayerViewer() {
@@ -111,16 +114,17 @@ export default function LayerViewer() {
     {
       id: 0,
       file: null,
-      annotations: null,
+      annotationsQc: null,
+      annotationsPath:null,
       drawings: [],
       drawingHistory: [],
-      response: null,
+      responseQc: null,
+      responsePath: null,
       canvasRef: React.createRef<HTMLCanvasElement>(),
       containerRef: React.createRef<HTMLDivElement>(),
       checkType: "qc",
     },
   ]);
-  console.log(layers,"layers");
   const [fullScreenLayer, setFullScreenLayer] = useState<Layer | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPoints, setCurrentPoints] = useState<number[]>([]);
@@ -136,6 +140,8 @@ export default function LayerViewer() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedDrawingId, setSelectedDrawingId] = useState<string | null>(null);
 
+  console.log("Layers:", layers);
+
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
   };
@@ -149,10 +155,12 @@ export default function LayerViewer() {
           ? {
               ...layer,
               file: null,
-              annotations: null,
+              annotationsQc: null,
+              annotationspath: null,
               drawings: [],
               drawingHistory: [],
-              response: null,
+              responseQc: null,
+              responsePath: null,
             }
           : layer
       );
@@ -195,7 +203,7 @@ export default function LayerViewer() {
   };
 
   const handleUpload = async () => {
-    const layer = layers.find((l) => l.id === selectedLayer);
+    const layer = layers?.find((l) => l.id === selectedLayer);
     if (!layer?.file) return;
 
     setIsLoading((prev) => {
@@ -206,10 +214,11 @@ export default function LayerViewer() {
 
     const formData = new FormData();
     formData.append("file", layer.file);
-    formData.append("model_name", layer.checkType);
-
+    // formData.append("model_name", layer.checkType);
+    formData.append("model_name", "qc");
+    
     try {
-      const res = await axios.post(
+      const resQc = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/inference/`,
         formData,
         {
@@ -220,8 +229,21 @@ export default function LayerViewer() {
         }
       );
 
-      const responseData = res.data as UploadResponse;
-      processApiResponse(responseData);
+      formData.append("model_name", "path");
+      const resPath = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/inference/`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            "ngrok-skip-browser-warning": "1",
+          },
+        }
+      );
+
+      const responseDataQc = resQc.data as UploadResponse;
+      const responseDataPath = resPath.data as UploadResponse;
+      processApiResponse(responseDataQc,responseDataPath);
     } catch (error) {
       console.error(error);
       toast.error("Failed to process image");
@@ -234,52 +256,81 @@ export default function LayerViewer() {
     }
   };
 
-  const processApiResponse = (responseData: UploadResponse) => {
-    const classMap = new Map<string, Annotation>();
-
-    responseData.data.results.forEach((result, index) => {
+  const processApiResponse = (responseDataQc: UploadResponse, responseDataPath: UploadResponse) => {
+    const classMapQc = new Map<string, Annotation>();
+    const classMapPath = new Map<string, Annotation>();
+  
+    // Process Qc
+    responseDataQc.data.results.forEach((result, index) => {
       const className = result.class;
-
-      if (!classMap.has(className)) {
-        classMap.set(className, {
+  
+      if (!classMapQc.has(className)) {
+        classMapQc.set(className, {
           class: className,
           roi_xyxy: [],
         });
       }
-
-      const annotation = classMap.get(className)!;
-
+  
+      const annotation = classMapQc.get(className)!;
+  
       annotation.roi_xyxy.push({
         coordinates: result.roi_xyxy[0],
         poly: result.poly ? result.poly[0] : undefined,
         visible: true,
-        id: `${className}-${index}`,
+        id: `${className}-qc-${index}`,
         label: (index + 1).toString(),
-        strokeColor: classColors[className]
-          ? classColors[className][1]
-          : "#FF0000",
-        bgColor: classColors[className]
-          ? classColors[className][0]
-          : "rgba(255, 0, 0, 0.5)",
+        strokeColor: classColors[className]?.[1] || "#FF0000",
+        bgColor: classColors[className]?.[0] || "rgba(255, 0, 0, 0.5)",
         showStroke: true,
-        showBackground: layers.find((l) => l.id === selectedLayer)?.checkType === "path",
-        openDrawer: false,
+        showBackground: layers?.find((l) => l.id === selectedLayer)?.checkType === "path",
         showLabel: false,
+        openDrawer: false
       });
     });
-
+  
+    // Process Path
+    responseDataPath.data.results.forEach((result, index) => {
+      const className = result.class;
+  
+      if (!classMapPath.has(className)) {
+        classMapPath.set(className, {
+          class: className,
+          roi_xyxy: [],
+        });
+      }
+  
+      const annotation = classMapPath.get(className)!;
+  
+      annotation.roi_xyxy.push({
+        coordinates: result.roi_xyxy[0],
+        poly: result.poly ? result.poly[0] : undefined,
+        visible: true,
+        id: `${className}-path-${index}`,
+        label: (index + 1).toString(),
+        strokeColor: classColors[className]?.[1] || "#FF0000",
+        bgColor: classColors[className]?.[0] || "rgba(255, 0, 0, 0.5)",
+        showStroke: true,
+        showBackground: true,
+        showLabel: false,
+        openDrawer: false
+      });
+    });
+  
     setLayers((prev) =>
       prev.map((layer) =>
         layer.id === selectedLayer
           ? {
               ...layer,
-              annotations: Array.from(classMap.values()),
-              response: responseData,
+              annotationsQc: Array.from(classMapQc.values()),
+              annotationsPath: Array.from(classMapPath.values()),
+              responseQc: responseDataQc,
+              responsePath: responseDataPath,
             }
           : layer
       )
     );
   };
+  
 
   const onDrop = useCallback(
     (acceptedFiles: File[]) => {
@@ -313,10 +364,12 @@ export default function LayerViewer() {
                 ? {
                     ...layer,
                     file,
-                    annotations: null,
+                    annotationsQc: null,
+                    annotationsPath: null,
                     drawings: [],
                     drawingHistory: [],
-                    response: null,
+                    responseQc: null,
+                    responsePath: null,
                   }
                 : layer
             )
@@ -517,8 +570,9 @@ export default function LayerViewer() {
     scaleX: number,
     scaleY: number,
     layer: Layer
-  ) => {
-    for (const annotation of layer.annotations || []) {
+  ) => {    
+    const annotateList = layer.checkType === "qc" ? layer?.annotationsQc : layer?.annotationsPath;
+    for (const annotation of annotateList ||[]) {
       for (const coord of annotation.roi_xyxy) {
         if (!coord.visible) continue;
 
@@ -583,7 +637,7 @@ export default function LayerViewer() {
           }
           break;
         }
-        case "polygon": {
+        case "polygon": {          
           if (isPointInPolygon(x, y, drawing.points)) {
             return {
               type: "drawing",
@@ -646,27 +700,31 @@ export default function LayerViewer() {
     e: React.MouseEvent<HTMLCanvasElement>,
     targetLayer: Layer
   ) => {
+    console.log('======================');
+    
     const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
-
+  
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
-
+  
     const imageElement = targetLayer.containerRef.current?.querySelector("img");
     if (!imageElement) return;
-
+  
     const displayedWidth = imageElement.getBoundingClientRect().width;
     const displayedHeight = imageElement.getBoundingClientRect().height;
-    const layerIndex = layers.findIndex((l) => l.id === targetLayer.id);
+    const layerIndex = layers?.findIndex((l) => l.id === targetLayer.id);
     const imageSize = imageSizes[layerIndex];
     if (!imageSize || !imageSize.width || !imageSize.height) return;
-
+  
     const scaleX = displayedWidth / imageSize.width;
     const scaleY = displayedHeight / imageSize.height;
-
-    const shape = findShapeAtPoint(x, y, scaleX, scaleY, targetLayer);
-
+  
+    const shape = findShapeAtPoint(x, y, scaleX, scaleY, targetLayer);  
+    // console.log(shape);
+      
+  
     if (shape) {
       if (shape.type === "annotation") {
         setLayers((prev) =>
@@ -674,28 +732,33 @@ export default function LayerViewer() {
             layer.id === targetLayer.id
               ? {
                   ...layer,
-                  annotations: layer.annotations?.map((annotation) => {
-                    if (annotation.class !== shape.className) return annotation;
-                    return {
-                      ...annotation,
-                      roi_xyxy: annotation.roi_xyxy.map((coord) => {
-                        if (coord.id !== shape.coordId) return coord;
-                        return { ...coord, showLabel: !coord.showLabel };
-                      }),
-                    };
-                  }) || [],
+                  [layer.checkType === "qc" ? "annotationsQc" : "annotationsPath"]:
+                    (layer.checkType === "qc" ? layer.annotationsQc : layer.annotationsPath)?.map(
+                      (annotation) => {
+                        if (annotation.class !== shape.className) return annotation;
+                        return {
+                          ...annotation,
+                          roi_xyxy: annotation.roi_xyxy.map((coord) => {
+                            if (coord.id !== shape.coordId) return coord;
+                            return { ...coord, showLabel: !coord.showLabel };
+                          }),
+                        };
+                      }
+                    ),
                 }
               : layer
           )
-        );
+        );        
       } else if (shape.type === "drawing") {
         setLayers((prev) =>
+
           prev.map((layer) =>
             layer.id === targetLayer.id
               ? {
                   ...layer,
                   drawings: layer.drawings.map((drawing) => {
                     if (drawing.id !== shape.drawingId) return drawing;
+                    
                     return { ...drawing, showLabel: !drawing.showLabel };
                   }),
                 }
@@ -706,12 +769,12 @@ export default function LayerViewer() {
       drawAnnotations(targetLayer.id);
     }
   };
-
+  
   const drawAnnotations = useCallback(
     (layerId?: number) => {
       const layersToDraw =
         layerId !== undefined
-          ? [layers.find((l) => l.id === layerId)].filter(
+          ? [layers?.find((l) => l.id === layerId)].filter(
               (l): l is Layer => l !== undefined
             )
           : layers;
@@ -719,7 +782,7 @@ export default function LayerViewer() {
       layersToDraw.forEach((layer) => {
         const canvas = layer.canvasRef.current;
         const container = layer.containerRef.current;
-        const layerIndex = layers.findIndex((l) => l.id === layer.id);
+        const layerIndex = layers?.findIndex((l) => l.id === layer.id);
         const imageSize = imageSizes[layerIndex];
 
         if (
@@ -753,7 +816,10 @@ export default function LayerViewer() {
         const scaleX = displayedWidth / imageSize.width;
         const scaleY = displayedHeight / imageSize.height;
 
-        layer.annotations?.forEach((annotation) => {
+        const annotateList =
+        layer.checkType === "qc" ? layer?.annotationsQc : layer?.annotationsPath;
+
+        annotateList?.forEach((annotation) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
@@ -773,6 +839,28 @@ export default function LayerViewer() {
               ctx.closePath();
               if (coord.showBackground) ctx.fill();
               if (coord.showStroke) ctx.stroke();
+              if (coord.showLabel) {
+                const label = `${coord.label}. ${annotation.class}`.trim();
+                if (label) {
+                  ctx.font = "12px Poppins";
+                  const textMetrics = ctx.measureText(label);
+                  const textHeight = 20;
+                  const labelX = coord.poly[0][0] * scaleX;
+                  const labelY = coord.poly[0][1] * scaleY;
+    
+                  ctx.fillStyle =
+                    theme === "dark" ? "rgba(0, 0, 0, 0.7)" : "rgba(0, 0, 0, 0.7)";
+                  ctx.fillRect(
+                    labelX,
+                    labelY - textHeight,
+                    textMetrics.width + 10,
+                    textHeight
+                  );
+    
+                  ctx.fillStyle = "#FFFFFF";
+                  ctx.fillText(label, labelX + 5, labelY - 5);
+                }
+              }
             } else {
               const [x1, y1, x2, y2] = coord.coordinates;
               const scaledX1 = x1 * scaleX;
@@ -928,20 +1016,20 @@ export default function LayerViewer() {
   }, [imageSizes, layers, fullScreenLayer, drawAnnotations]);
 
   const handleDeleteLayer = (id: number) => {
-    if (layers.length === 1) {
+    if (layers?.length === 1) {
       toast.error("Cannot delete the last layer");
       return;
     }
 
     setLayers((prevLayers) => {
-      const updatedLayers = prevLayers.filter((layer) => layer.id !== id);
+      const updatedLayers = prevLayers?.filter((layer) => layer.id !== id);
 
       setImageSizes((prevSizes) =>
         prevSizes.filter((_, index) => updatedLayers[index]?.id !== id)
       );
 
       if (selectedLayer === id) {
-        setSelectedLayer(updatedLayers.length > 0 ? updatedLayers[0].id : 0);
+        setSelectedLayer(updatedLayers?.length > 0 ? updatedLayers[0].id : 0);
       }
 
       return updatedLayers;
@@ -954,22 +1042,24 @@ export default function LayerViewer() {
 
   const addLayer = () => {
     setLayers((prevLayers) => {
-      if (prevLayers.length >= 6) {
+      if (prevLayers?.length >= 6) {
         toast.error("Maximum of 6 layers allowed");
         return prevLayers;
       }
 
       const lastId =
-        prevLayers.length > 0 ? prevLayers[prevLayers.length - 1].id : 0;
+        prevLayers?.length > 0 ? prevLayers[prevLayers?.length - 1].id : 0;
       const newId = lastId + 1;
 
       const newLayer: Layer = {
         id: newId,
         file: null,
-        annotations: null,
+        annotationsQc: null,
+        annotationsPath: null,
         drawings: [],
         drawingHistory: [],
-        response: null,
+        responseQc: null,
+        responsePath: null,
         canvasRef: React.createRef<HTMLCanvasElement>(),
         containerRef: React.createRef<HTMLDivElement>(),
         checkType: "qc",
@@ -987,7 +1077,7 @@ export default function LayerViewer() {
     setFullScreenLayer(fullScreenLayer ? null : layer);
   };
 
-  const toggleLayerCheckType = (layerId: number) => {
+   const toggleLayerCheckType = (layerId: number) => {
     setLayers((prev) =>
       prev.map((layer) =>
         layer.id === layerId
@@ -1002,11 +1092,11 @@ export default function LayerViewer() {
       !isAnnotationEnabled ||
       (currentTool === "select" && !isTransforming)
     ) {
-      handleShapeClick(e, fullScreenLayer || layers.find((l) => l.id === selectedLayer)!);
+      handleShapeClick(e, fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!);
       return;
     }
 
-    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
+    const targetLayer = fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!;
     const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
 
@@ -1019,7 +1109,7 @@ export default function LayerViewer() {
 
     const displayedWidth = imageElement.getBoundingClientRect().width;
     const displayedHeight = imageElement.getBoundingClientRect().height;
-    const layerIndex = layers.findIndex((l) => l.id === targetLayer.id);
+    const layerIndex = layers?.findIndex((l) => l.id === targetLayer.id);
     const imageSize = imageSizes[layerIndex];
     if (!imageSize || !imageSize.width || !imageSize.height) return;
 
@@ -1030,7 +1120,7 @@ export default function LayerViewer() {
     const scaledY = y * scaleY;
 
     if (currentTool === "move") {
-      const shape = findShapeAtPoint(scaledX, scaledY, 1, 1, targetLayer);
+      const shape:any = findShapeAtPoint(scaledX, scaledY, 1, 1, targetLayer);
       if (shape?.type === "drawing") {
         setIsTransforming(true);
         setSelectedShape(shape.drawingId);
@@ -1084,6 +1174,7 @@ export default function LayerViewer() {
                         id: `drawing-${Date.now()}`,
                         transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
                         showLabel: false,
+                        // openDrawer:false
                       },
                     ],
                     drawingHistory: [...layer.drawingHistory, layer.drawings],
@@ -1119,6 +1210,7 @@ export default function LayerViewer() {
                     id: `drawing-${Date.now()}`,
                     transform: { scale: 1, rotation: 0, translate: { x: 0, y: 0 } },
                     showLabel: false,
+                    // openDrawer:false
                   },
                 ],
                 drawingHistory: [...layer.drawingHistory, layer.drawings],
@@ -1141,7 +1233,7 @@ export default function LayerViewer() {
     )
       return;
 
-    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
+    const targetLayer = fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!;
     const canvas = targetLayer.canvasRef.current;
     if (!canvas) return;
 
@@ -1154,7 +1246,7 @@ export default function LayerViewer() {
 
     const displayedWidth = imageElement.getBoundingClientRect().width;
     const displayedHeight = imageElement.getBoundingClientRect().height;
-    const layerIndex = layers.findIndex((l) => l.id === targetLayer.id);
+    const layerIndex = layers?.findIndex((l) => l.id === targetLayer.id);
     const imageSize = imageSizes[layerIndex];
     if (!imageSize || !imageSize.width || !imageSize.height) return;
 
@@ -1287,7 +1379,7 @@ export default function LayerViewer() {
 
     if (!isDrawing && !isPolygonDrawing) return;
 
-    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
+    const targetLayer = fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!;
     const targetLayerId = targetLayer.id;
 
     if (currentTool === "polygon" && isPolygonDrawing) {
@@ -1330,7 +1422,7 @@ export default function LayerViewer() {
   const handleDoubleClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (!isPolygonDrawing || currentTool !== "polygon") return;
 
-    const targetLayer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
+    const targetLayer = fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!;
     const targetLayerId = targetLayer.id;
 
     if (currentPoints.length >= 6) {
@@ -1401,13 +1493,13 @@ export default function LayerViewer() {
   };
 
   const handleDownloadWithAnnotations = () => {
-    const layer = fullScreenLayer || layers.find((l) => l.id === selectedLayer)!;
+    const layer = fullScreenLayer || layers?.find((l) => l.id === selectedLayer)!;
     if (!layer?.file) {
       toast.error("No image to download");
       return;
     }
 
-    const layerIndex = layers.findIndex((l) => l.id === layer.id);
+    const layerIndex = layers?.findIndex((l) => l.id === layer.id);
     const imageSize = imageSizes[layerIndex];
     if (!imageSize || !imageSize.width || !imageSize.height) return;
 
@@ -1423,7 +1515,8 @@ export default function LayerViewer() {
       tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
 
       if (isAnnotationEnabled) {
-        layer.annotations?.forEach((annotation) => {
+        const annotateList = layer.checkType === "qc" ? layer?.annotationsQc : layer?.annotationsPath;
+        annotateList?.forEach((annotation) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
@@ -1513,15 +1606,15 @@ export default function LayerViewer() {
   useEffect(() => {
     const canvas = fullScreenLayer
       ? fullScreenLayer.canvasRef.current
-      : layers.find((l) => l.id === selectedLayer)?.canvasRef?.current;
+      : layers?.find((l) => l.id === selectedLayer)?.canvasRef?.current;
     if (!canvas) return;
 
     canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
   }, [currentTool, layers, selectedLayer, fullScreenLayer]);
 
   useEffect(() => {
-    const layer = layers.find((l) => l.id === selectedLayer);
-    if (layer?.file && !layer.response) {
+    const layer = layers?.find((l) => l.id === selectedLayer);
+    if (layer?.file && !layer.responseQc && !layer.responsePath) {
       handleUpload();
     }
   }, [layers, selectedLayer]);
@@ -1575,14 +1668,14 @@ export default function LayerViewer() {
                   onClick={() => toggleLayerCheckType(selectedLayer)}
                 >
                   <span className="max-sm:hidden">Switch to</span>
-                  <span>{layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}</span>
+                  <span>{layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}</span>
                 </button>
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
                 className="px-3 py-1.5 text-xs font-medium shadow-lg"
               >
-                Switch to {layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
+                Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -1628,14 +1721,14 @@ export default function LayerViewer() {
                 className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
                 onClick={() => toggleLayerCheckType(selectedLayer)}
               >
-                Switch to {layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}
+                Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}
               </button>
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
               className="px-3 py-1.5 text-xs font-medium shadow-lg"
             >
-              Switch to {layers.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
+              Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -1843,16 +1936,16 @@ export default function LayerViewer() {
           ) : (
             <div
               className={`w-full grid ${
-                layers.length >= 3
+                layers?.length >= 3
                   ? "xl:grid-cols-3 sm:grid-cols-2 grid-cols-1"
-                  : layers.length === 2
+                  : layers?.length === 2
                   ? "xl:grid-cols-2 sm:grid-cols-2 grid-cols-1"
                   : "grid-cols-1"
               }`}
             >
-              {layers.map((layer) => (
+              {layers?.map((layer) => (
                 <div key={layer.id} className="relative">
-                  {layers.length > 1 && (
+                  {layers?.length > 1 && (
                     <LayerActionMenu
                       layer={layer}
                       theme={theme}
@@ -1889,6 +1982,7 @@ export default function LayerViewer() {
                       <LayerOptions
                         layer={layer}
                         theme={theme}
+                        toggleLayerCheckType={toggleLayerCheckType}
                         setFullScreenLayer={setFullScreenLayer}
                         handleDeleteLayer={handleDeleteLayer}
                         handleDeleteLayerImg={() => handleRemoveImage(layer.id)}
@@ -1953,19 +2047,14 @@ export default function LayerViewer() {
                     <div key={layer.id}>
                       <p className="py-2">Layer {layer.id + 1}</p>
                       <RenderOPGAnnotationsList
-                        annotations={layer?.annotations}
+                        annotations={layer.checkType=="qc"?layer?.annotationsQc:layer?.annotationsPath}
                         theme={theme}
                         editingId={editingId}
                         setEditingId={setEditingId}
-                        setAnnotations={(annotations) =>
-                          setLayers((prev) =>
-                            prev.map((l) =>
-                              l.id === layer.id ? { ...l, annotations } : l
-                            )
-                          )
-                        }
+                        setAnnotations={setLayers}
                         textColor={textColor}
                         secondaryTextColor={secondaryTextColor}
+                        viewer={"layer"}
                       />
                     </div>
                   ))}
@@ -1975,17 +2064,19 @@ export default function LayerViewer() {
                     <div key={layer.id}>
                       <p className="py-2">Layer {layer.id + 1}</p>
                       <RenderCustomAnnotationsList
-                        drawings={layer.drawings}
+                        drawings={layer?.drawings}
                         theme={theme}
-                        setDrawings={(drawings) =>
-                          setLayers((prev) =>
-                            prev.map((l) =>
-                              l.id === layer.id ? { ...l, drawings } : l
-                            )
-                          )
-                        }
+                        // setDrawings={(drawings:any) =>
+                        //   setLayers((prev) =>
+                        //     prev.map((l) =>
+                        //       l.id === layer.id ? { ...l, drawings } : l
+                        //     )
+                        //   )
+                        // }
+                        setDrawings={setLayers}
                         textColor={textColor}
                         secondaryTextColor={secondaryTextColor}
+                        viewer={"layer"}
                       />
                     </div>
                   ))}

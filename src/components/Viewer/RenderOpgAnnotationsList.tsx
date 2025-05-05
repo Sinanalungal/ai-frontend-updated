@@ -11,27 +11,64 @@ const RenderOPGAnnotationsList = ({
   setAnnotations,
   textColor,
   secondaryTextColor,
+  viewer="default"
 }: any) => {
+  // console.log(annotations,"this si the annotat");
+  
   const toggleAnnotationVisibility = (className: string, coordId: string) => {
-    setAnnotations((prev: any) =>
-      prev.map((ann: any) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord: any) => ({
-              ...coord,
-              visible: coord.id === coordId ? !coord.visible : coord.visible,
-            })),
-          };
-        }
-        return ann;
-      })
-    );
+    if (viewer === "default") {
+      setAnnotations((prev: any) =>
+        prev.map((ann: any) => {
+          if (ann.class === className) {
+            return {
+              ...ann,
+              roi_xyxy: ann.roi_xyxy.map((coord: any) => ({
+                ...coord,
+                visible: coord.id === coordId ? !coord.visible : coord.visible,
+              })),
+            };
+          }
+          return ann;
+        })
+      );
+    } else if (viewer === "layer") {
+      setAnnotations((prev: any) => {
+        return prev.map((layer: any) => {
+          if (layer.checkType === "qc") {
+            return {
+              ...layer,
+              annotationsQc: layer?.annotationsQc?.map((annots: any) => ({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                  ...coord,
+                  visible: coord.id === coordId ? !coord.visible : coord.visible,
+                })),
+              })),
+            };
+          } else if (layer.checkType === "path") {
+            return {
+              ...layer,
+              annotationsPath: layer?.annotationsPath?.map((annots: any) => ({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                  ...coord,
+                  visible: coord.id === coordId ? !coord.visible : coord.visible,
+                })),
+              })),
+            };
+          }
+          return layer;
+        });
+      });
+    }
   };
 
   const toggleDrawerVisiblility = (className: string, coordId: string) => {
+    if(viewer=="default"){
     setAnnotations((prev: any) =>
       prev.map((ann: any) => {
+        // console.log(prev,"this is prev");
+        
         if (ann.class === className) {
           return {
             ...ann,
@@ -45,24 +82,85 @@ const RenderOPGAnnotationsList = ({
         return ann;
       })
     );
+  }else if (viewer == "layer"){
+    setAnnotations((prev:any)=>{
+      // console.log(prev,"this si the prev");
+      return prev.map((layer:any)=>{
+        if (layer.checkType=="qc"){
+          return {
+            ...layer,
+            annotationsQc: layer?.annotationsQc?.map((annots:any)=>({
+              ...annots,
+              roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                ...coord,
+                openDrawer: coord.id === coordId ? !coord.openDrawer : coord.openDrawer,
+              }))
+            }))
+          }
+        }else if (layer.checkType == "path"){
+          return {
+            ...layer,
+            annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+              ...annots,
+              roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                ...coord,
+                openDrawer: coord.id === coordId ? !coord.openDrawer : coord.openDrawer,
+              }))
+            }))
+          }
+        }
+        return layer;
+      });
+      
+    })
+  }
   };
 
   const handleDelete = (className: string, coordId: string) => {
-    setAnnotations((prev: any) =>
-      prev
-        .map((ann: any) => {
-          if (ann.class === className) {
+    if (viewer === "default") {
+      setAnnotations((prev: any) =>
+        prev
+          .map((ann: any) => {
+            if (ann.class === className) {
+              return {
+                ...ann,
+                roi_xyxy: ann.roi_xyxy.filter(
+                  (coord: any) => coord.id !== coordId
+                ),
+              };
+            }
+            return ann;
+          })
+          .filter((ann: any) => ann.roi_xyxy.length > 0)
+      );
+    } else if (viewer === "layer") {
+      setAnnotations((prev: any) => {
+        return prev.map((layer: any) => {
+          if (layer.checkType === "qc") {
             return {
-              ...ann,
-              roi_xyxy: ann.roi_xyxy.filter(
-                (coord: any) => coord.id !== coordId
-              ),
+              ...layer,
+              annotationsQc: layer?.annotationsQc?.map((annots: any) => ({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.filter(
+                  (coord: any) => coord.id !== coordId
+                ),
+              })),
+            };
+          } else if (layer.checkType === "path") {
+            return {
+              ...layer,
+              annotationsPath: layer?.annotationsPath?.map((annots: any) => ({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.filter(
+                  (coord: any) => coord.id !== coordId
+                ),
+              })),
             };
           }
-          return ann;
-        })
-        .filter((ann: any) => ann.roi_xyxy.length > 0)
-    );
+          return layer;
+        });
+      });
+    }
   };
 
   const updateAnnotationLabel = (
@@ -70,20 +168,52 @@ const RenderOPGAnnotationsList = ({
     coordId: string,
     newLabel: string
   ) => {
-    setAnnotations((prev: any) =>
-      prev.map((ann: any) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord: any) => ({
-              ...coord,
-              label: coord.id === coordId ? newLabel : coord.label,
-            })),
-          };
-        }
-        return ann;
+    if(viewer == "default"){
+      setAnnotations((prev: any) =>
+        prev.map((ann: any) => {
+          if (ann.class === className) {
+            return {
+              ...ann,
+              roi_xyxy: ann.roi_xyxy.map((coord: any) => ({
+                ...coord,
+                label: coord.id === coordId ? newLabel : coord.label,
+              })),
+            };
+          }
+          return ann;
+        })
+      );
+    }else if (viewer=="layer"){
+      setAnnotations((prev:any)=>{
+        return prev.map((layer:any)=>{
+          if (layer.checkType=="qc"){
+            return {
+              ...layer,
+              annotationsQc: layer?.annotationsQc?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                  ...coord,
+                  label: coord.id === coordId ? newLabel : coord.label,
+                }))
+              }))
+            }
+          }else if (layer.checkType == "path"){
+            return {
+              ...layer,
+              annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                  ...coord,
+                  label: coord.id === coordId ? newLabel : coord.label,
+                }))
+              }))
+            }
+          }
+          return layer;
+        });
+        
       })
-    );
+    }
     setEditingId(null);
   };
 
@@ -105,19 +235,45 @@ const RenderOPGAnnotationsList = ({
     field: "strokeColor" | "bgColor",
     value: string
   ) => {
-    setAnnotations((prev: any) =>
-      prev.map((ann: any) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord: any) =>
-              coord.id === coordId ? { ...coord, [field]: value } : coord
-            ),
-          };
-        }
-        return ann;
+    if(viewer=="default"){
+      setAnnotations((prev: any) =>
+        prev.map((ann: any) => {
+          if (ann.class === className) {
+            return {
+              ...ann,
+              roi_xyxy: ann.roi_xyxy.map((coord: any) =>
+                coord.id === coordId ? { ...coord, [field]: value } : coord
+              ),
+            };
+          }
+          return ann;
+        })
+      );
+    }else if (viewer=="layer"){
+      setAnnotations((prev:any)=>{
+        return prev.map((layer:any)=>{
+          if (layer.checkType=="qc"){
+            return {
+              ...layer,
+              annotationsQc: layer?.annotationsQc?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId ? { ...coord, [field]: value } : coord))
+              }))
+            }
+          }else if (layer.checkType == "path"){
+            return {
+              ...layer,
+              annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId ? { ...coord, [field]: value } : coord))
+              }))
+            }
+          }
+          return layer;
+        });
+        
       })
-    );
+    }
   };
 
   const toggleAnnotationDisplay = (
@@ -125,21 +281,51 @@ const RenderOPGAnnotationsList = ({
     coordId: string,
     field: "showStroke" | "showBackground"
   ) => {
-    setAnnotations((prev: any) =>
-      prev.map((ann: any) => {
-        if (ann.class === className) {
-          return {
-            ...ann,
-            roi_xyxy: ann.roi_xyxy.map((coord: any) =>
-              coord.id === coordId
-                ? { ...coord, [field]: !coord[field] }
-                : coord
-            ),
-          };
-        }
-        return ann;
+    if(viewer=="default"){
+      setAnnotations((prev: any) =>
+        prev.map((ann: any) => {
+          if (ann.class === className) {
+            return {
+              ...ann,
+              roi_xyxy: ann.roi_xyxy.map((coord: any) =>
+                coord.id === coordId
+                  ? { ...coord, [field]: !coord[field] }
+                  : coord
+              ),
+            };
+          }
+          return ann;
+        })
+      );
+    }else if (viewer == "layer"){
+      setAnnotations((prev:any)=>{
+        return prev.map((layer:any)=>{
+          if (layer.checkType=="qc"){
+            return {
+              ...layer,
+              annotationsQc: layer?.annotationsQc?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId
+                  ? { ...coord, [field]: !coord[field] }
+                  : coord))
+              }))
+            }
+          }else if (layer.checkType == "path"){
+            return {
+              ...layer,
+              annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId
+                  ? { ...coord, [field]: !coord[field] }
+                  : coord))
+              }))
+            }
+          }
+          return layer;
+        });
+        
       })
-    );
+    }
   };
 
   return (

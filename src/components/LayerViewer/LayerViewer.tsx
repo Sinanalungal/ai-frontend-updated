@@ -1615,7 +1615,11 @@ export default function LayerViewer() {
       : layers?.find((l) => l.id === selectedLayer)?.canvasRef?.current;
     if (!canvas) return;
 
-    canvas.style.cursor = currentTool === "select" ? "default" : "crosshair";
+    canvas.style.cursor = currentTool === "select"
+    ? "default"
+    : currentTool === "move" || currentTool === "reshape"
+    ? "grab"
+    : "crosshair";
   }, [currentTool, layers, selectedLayer, fullScreenLayer]);
 
   useEffect(() => {

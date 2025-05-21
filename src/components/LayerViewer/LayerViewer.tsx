@@ -1669,7 +1669,7 @@ export default function LayerViewer() {
         </div>
         <div className="flex items-center gap-3">
           <TooltipProvider delayDuration={200}>
-            <Tooltip>
+            {/* <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
@@ -1685,7 +1685,7 @@ export default function LayerViewer() {
               >
                 Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
               </TooltipContent>
-            </Tooltip>
+            </Tooltip> */}
             <Tooltip>
               <TooltipTrigger asChild>
                 <button

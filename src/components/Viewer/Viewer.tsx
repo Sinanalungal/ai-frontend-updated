@@ -2,14 +2,14 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   ChevronLeft,
   ChevronRight,
-  Maximize2,
-  Layers,
-  Settings,
-  Search,
+  // Maximize2,
+  // Layers,
+  // Settings,
+  // Search,
   Ruler,
   Move,
   Download,
-  FileText,
+  // FileText,
   Moon,
   Sun,
   MousePointer,
@@ -38,6 +38,8 @@ import { classColors } from "@/constants/teethRelated";
 import { ToolButton } from "./ToolButton";
 import RenderOPGAnnotationsList from "./RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "./RenderCustomAnnotationsList";
+import { useNavigate } from "react-router-dom";
+import { TbSwitch3 } from "react-icons/tb";
 
 
 interface Drawing {
@@ -134,6 +136,7 @@ export default function Viewer() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const navigate = useNavigate()
 
   const toggleTheme = () => {
     setTheme(theme === "dark" ? "light" : "dark");
@@ -1583,7 +1586,7 @@ export default function Viewer() {
               </Tooltip>
             </TooltipProvider>
 
-            <TooltipProvider delayDuration={200}>
+            {/* <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button className={`p-2 ${buttonHoverColor} rounded-full`}>
@@ -1597,20 +1600,22 @@ export default function Viewer() {
                   Enter Fullscreen
                 </TooltipContent>
               </Tooltip>
-            </TooltipProvider>
+            </TooltipProvider> */}
 
             <TooltipProvider delayDuration={200}>
               <Tooltip>
                 <TooltipTrigger asChild>
-                  <button className={`p-2 ${buttonHoverColor} rounded-full`}>
-                    <Settings size={18} />
+                  <button onClick={()=>navigate('layer')} className={`p-2 ${buttonHoverColor} rounded-full`}>
+                    <TbSwitch3 size={18} />
+                    {/* <Settings size={18} /> */}
                   </button>
                 </TooltipTrigger>
                 <TooltipContent
                   side="bottom"
                   className="px-3 py-1.5 text-sm font-medium shadow-lg"
                 >
-                  Open Settings
+                  Switch To Layer View
+                  {/* Open Settings */}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -1755,10 +1760,10 @@ export default function Viewer() {
             </Tooltip>
           </TooltipProvider>
 
-          <TooltipProvider delayDuration={200}>
+          {/* <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button className={`p-2 rounded-full ${buttonHoverColor}`}>
+                <button  className={`p-2 rounded-full ${buttonHoverColor}`}>
                   <Layers size={20} />
                 </button>
               </TooltipTrigger>
@@ -1769,9 +1774,9 @@ export default function Viewer() {
                 Switch to Layer Based Viewer
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </TooltipProvider> */}
 
-          <TooltipProvider delayDuration={200}>
+          {/* <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button className={`p-2 rounded-full ${buttonHoverColor}`}>
@@ -1800,12 +1805,12 @@ export default function Viewer() {
                 Search Features
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </TooltipProvider> */}
         </div>
 
         <div
-          className="flex justify-center relative overflow-hidden "
-          style={{ width: "calc(100% - 4.5rem)" }}
+          className="flex justify-center relative overflow-scroll scrollbar-hide"
+          style={{ width: "calc(100% - 4.5rem)"}}
         >
           {isLoading && (
             <div

@@ -38,11 +38,7 @@ import { classColors } from "@/constants/teethRelated";
 import { ToolButton } from "./ToolButton";
 import RenderOPGAnnotationsList from "./RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "./RenderCustomAnnotationsList";
-import {
-  HoverCard,
-  HoverCardContent,
-  HoverCardTrigger,
-} from "@/components/ui/hover-card";
+
 
 interface Drawing {
   type: string;
@@ -100,7 +96,7 @@ export default function Viewer() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [checkType, setCheckType] = useState<"qc" | "path">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
-  const [uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
+  const [_uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
     null
   );
   const [isLoading, setIsLoading] = useState(false);
@@ -133,7 +129,7 @@ export default function Viewer() {
   } | null>(null);
   const [drawingHistory, setDrawingHistory] = useState<Drawing[][]>([]);
   const [showSelecting, setShowSelecting] = useState(false);
-  const [selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
+  const [_selectionPosition, setSelectionPosition] = useState({ x: 0, y: 0 });
   const [editingId, setEditingId] = useState<string | null>(null);
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -523,7 +519,7 @@ export default function Viewer() {
     const scaledY = y * scaleY;
 
     if (currentTool === "move") {
-      const shape = findShapeAtPoint(scaledX, scaledY, 1, 1);
+      const shape:any = findShapeAtPoint(scaledX, scaledY, 1, 1);
       if (shape?.type === "drawing") {
         setIsTransforming(true);
         setSelectedShape(shape.drawingId);
@@ -937,32 +933,32 @@ export default function Viewer() {
     }
   };
 
-  const handleSelectionSubmit = (
-    toothNumber: string,
-    pathology: string,
-    customPathology?: string
-  ) => {
-    setDrawings((prev) => {
-      const lastDrawing = prev[prev.length - 1];
-      if (lastDrawing) {
-        const label =
-          pathology === "Other" && customPathology
-            ? `${toothNumber}  ${customPathology}`
-            : `${toothNumber}  ${pathology}`;
+  // const handleSelectionSubmit = (
+  //   toothNumber: string,
+  //   pathology: string,
+  //   customPathology?: string
+  // ) => {
+  //   setDrawings((prev) => {
+  //     const lastDrawing = prev[prev.length - 1];
+  //     if (lastDrawing) {
+  //       const label =
+  //         pathology === "Other" && customPathology
+  //           ? `${toothNumber}  ${customPathology}`
+  //           : `${toothNumber}  ${pathology}`;
 
-        const updatedDrawing = {
-          ...lastDrawing,
-          label,
-          toothNumber,
-          pathology,
-          customPathology,
-        };
-        return [...prev.slice(0, -1), updatedDrawing];
-      }
-      return prev;
-    });
-    setShowSelecting(false);
-  };
+  //       const updatedDrawing = {
+  //         ...lastDrawing,
+  //         label,
+  //         toothNumber,
+  //         pathology,
+  //         customPathology,
+  //       };
+  //       return [...prev.slice(0, -1), updatedDrawing];
+  //     }
+  //     return prev;
+  //   });
+  //   setShowSelecting(false);
+  // };
 
   const processApiResponse = (responseData: UploadResponse) => {
     const classMap = new Map<string, Annotation>();
@@ -1027,7 +1023,7 @@ export default function Viewer() {
     const scaleX = displayedWidth / imageSize.width;
     const scaleY = displayedHeight / imageSize.height;
 
-    annotations.forEach((annotation, annIndex) => {
+    annotations.forEach((annotation, _annIndex) => {
       annotation.roi_xyxy.forEach((coord) => {
         if (!coord.visible) return;
 
@@ -1158,7 +1154,7 @@ export default function Viewer() {
       tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
 
       if (isAnnotationEnabled) {
-        annotations.forEach((annotation, annIndex) => {
+        annotations.forEach((annotation, _annIndex) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 

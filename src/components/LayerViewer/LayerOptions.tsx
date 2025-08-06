@@ -3,7 +3,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { EllipsisVertical, Fullscreen, Trash2, ImageMinus, Ruler, Download } from "lucide-react";
+import { EllipsisVertical, Fullscreen, Trash2, ImageMinus } from "lucide-react";
 import React from "react";
 
 

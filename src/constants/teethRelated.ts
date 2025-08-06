@@ -84,6 +84,12 @@ export const pathologyOptions = [
   "Other",
 ];
 
+export const checkTypeOptions = [
+  { value: "qc", label: "Quality Check" },
+  { value: "path", label: "Pathology" },
+  { value: "tooth", label: "Tooth" },
+];
+
 export const classColors: any = {
   Caries: ["rgba(255, 0, 0, 0.5)", "rgba(255, 0, 0, 0.6)"],
   Crown: ["rgba(255, 215, 0, 0.5)", "rgba(255, 215, 0, 0.6)"],

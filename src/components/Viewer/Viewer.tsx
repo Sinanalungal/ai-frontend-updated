@@ -40,6 +40,14 @@ import RenderOPGAnnotationsList from "./RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "./RenderCustomAnnotationsList";
 import { useNavigate } from "react-router-dom";
 import { TbSwitch3 } from "react-icons/tb";
+import { ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { checkTypeOptions } from "@/constants/teethRelated";
 
 
 interface Drawing {
@@ -96,7 +104,7 @@ export default function Viewer() {
   const [theme, setTheme] = useState("dark");
   const [infoPanelOpen, setInfoPanelOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [checkType, setCheckType] = useState<"qc" | "path">("qc");
+  const [checkType, setCheckType] = useState<"qc" | "path" | "tooth">("qc");
   const [isAnnotationEnabled, setIsAnnotationEnabled] = useState(true);
   const [_uploadResponse, setUploadResponse] = useState<UploadResponse | null>(
     null
@@ -186,7 +194,7 @@ export default function Viewer() {
 
   const handleUpload = async () => {
     if (!selectedFile) return;
-
+    setInfoPanelOpen(false);
     setIsLoading(true);
     setAnnotations([]);
     setUploadResponse(null);
@@ -332,7 +340,7 @@ export default function Viewer() {
       for (const coord of annotation.roi_xyxy) {
         if (!coord.visible) continue;
 
-        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+        if ((checkType === "path" || checkType === "tooth") && coord.poly && coord.poly.length > 0) {
           const scaledPoly = coord.poly.map(([px, py]) => [
             px * scaleX,
             py * scaleY,
@@ -991,7 +999,7 @@ export default function Viewer() {
           ? classColors[className][0]
           : "rgba(255, 0, 0, 0.5)",
         showStroke: true,
-        showBackground: checkType === "path" ? true : false,
+        showBackground: checkType === "path" || checkType === "tooth" ? true : false,
         openDrawer: false,
         showLabel: false,
       });
@@ -1030,7 +1038,7 @@ export default function Viewer() {
       annotation.roi_xyxy.forEach((coord) => {
         if (!coord.visible) return;
 
-        if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+        if ((checkType === "path" || checkType === "tooth") && coord.poly && coord.poly.length > 0) {
           ctx.beginPath();
           const bgColor =
             coord.showBackground && coord.bgColor
@@ -1053,7 +1061,7 @@ export default function Viewer() {
           if (coord.showStroke) ctx.stroke();
 
           if (coord.showLabel) {
-            const label = `${coord.label}. ${annotation.class}`.trim();
+            const label = checkType === "tooth" ? annotation.class : `${coord.label}. ${annotation.class}`.trim();
             if (label) {
               ctx.font = "12px Poppins";
               const textMetrics = ctx.measureText(label);
@@ -1104,7 +1112,7 @@ export default function Viewer() {
           }
 
           if (coord.showLabel) {
-            const label = `${coord.label} ${annotation.class}`.trim();
+            const label = checkType === "tooth" ? annotation.class : `${coord.label} ${annotation.class}`.trim();
             if (label) {
               ctx.font = "12px Poppins";
               const textMetrics = ctx.measureText(label);
@@ -1161,7 +1169,7 @@ export default function Viewer() {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
-            if (checkType === "path" && coord.poly && coord.poly.length > 0) {
+            if ((checkType === "path" || checkType === "tooth") && coord.poly && coord.poly.length > 0) {
               tempCtx.beginPath();
               const bgColor =
                 coord.showBackground && coord.bgColor
@@ -1528,21 +1536,38 @@ export default function Viewer() {
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
-                  className={`p-2  max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                  onClick={() =>
-                    setCheckType(checkType === "qc" ? "path" : "qc")
-                  }
-                >
-                  <span className="max-sm:hidden">Switch to</span>
-                  <span>{checkType === "qc" ? "Pathology" : "QC"}</span>
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                    >
+                      <span className="max-sm:hidden">Switch to</span>
+                      <span>
+                        {checkTypeOptions.find(option => option.value === checkType)?.label || "QC"}
+                      </span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {checkTypeOptions.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => setCheckType(option.value as "qc" | "path" | "tooth")}
+                        className={`cursor-pointer ${
+                          checkType === option.value ? "bg-accent" : ""
+                        }`}
+                      >
+                        {option.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
                 className="px-3 py-1.5 text-xs font-medium shadow-lg"
               >
-                Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+                Switch Check Type
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
@@ -1626,18 +1651,35 @@ export default function Viewer() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                onClick={() => setCheckType(checkType === "qc" ? "path" : "qc")}
-              >
-                Switch to {checkType === "qc" ? "Pathology" : "QC"}
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                  >
+                    Switch to {checkTypeOptions.find(option => option.value === checkType)?.label || "QC"}
+                    <ChevronDown size={12} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-40">
+                  {checkTypeOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => setCheckType(option.value as "qc" | "path" | "tooth")}
+                      className={`cursor-pointer ${
+                        checkType === option.value ? "bg-accent" : ""
+                      }`}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
               className="px-3 py-1.5 text-xs font-medium shadow-lg"
             >
-              Switch to {checkType === "qc" ? "Pathology" : "Quality"} Check
+              Switch Check Type
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -1926,6 +1968,7 @@ export default function Viewer() {
                     setAnnotations={setAnnotations}
                     textColor={textColor}
                     secondaryTextColor={secondaryTextColor}
+                    checkType={checkType}
                   />
                 </TabsContent>
                 <TabsContent value="MARKINGS" className="mt-2">

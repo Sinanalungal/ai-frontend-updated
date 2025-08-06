@@ -3,6 +3,23 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { RiDeleteBinLine } from "react-icons/ri";
 import { hexToRgba, rgbaToHex } from "@/utility/RgbaHexConvertions";
 
+// Different colors for tooth mode
+const getToothColor = (index: number) => {
+  const toothColors = [
+    "rgba(255, 0, 0, 0.5)",    // Red
+    "rgba(0, 255, 0, 0.5)",    // Green
+    "rgba(0, 0, 255, 0.5)",    // Blue
+    "rgba(255, 255, 0, 0.5)",  // Yellow
+    "rgba(255, 0, 255, 0.5)",  // Magenta
+    "rgba(0, 255, 255, 0.5)",  // Cyan
+    "rgba(255, 165, 0, 0.5)",  // Orange
+    "rgba(128, 0, 128, 0.5)",  // Purple
+    "rgba(0, 128, 0, 0.5)",    // Dark Green
+    "rgba(128, 128, 0, 0.5)",  // Olive
+  ];
+  return toothColors[index % toothColors.length];
+};
+
 const RenderOPGAnnotationsList = ({
   annotations,
   theme,
@@ -11,7 +28,8 @@ const RenderOPGAnnotationsList = ({
   setAnnotations,
   textColor,
   secondaryTextColor,
-  viewer="default"
+  viewer="default",
+  checkType="qc"
 }: any) => {
   // console.log(annotations,"this si the annotat");
   
@@ -49,6 +67,17 @@ const RenderOPGAnnotationsList = ({
             return {
               ...layer,
               annotationsPath: layer?.annotationsPath?.map((annots: any) => ({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                  ...coord,
+                  visible: coord.id === coordId ? !coord.visible : coord.visible,
+                })),
+              })),
+            };
+          } else if (layer.checkType === "tooth") {
+            return {
+              ...layer,
+              annotationsTooth: layer?.annotationsTooth?.map((annots: any) => ({
                 ...annots,
                 roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
                   ...coord,
@@ -100,7 +129,18 @@ const RenderOPGAnnotationsList = ({
         }else if (layer.checkType == "path"){
           return {
             ...layer,
-            annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+            annotationsPath: layer?.annotationsPath?.map((annots:any)=>({
+              ...annots,
+              roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                ...coord,
+                openDrawer: coord.id === coordId ? !coord.openDrawer : coord.openDrawer,
+              }))
+            }))
+          }
+        }else if (layer.checkType == "tooth"){
+          return {
+            ...layer,
+            annotationsTooth: layer?.annotationsTooth?.map((annots:any)=>({
               ...annots,
               roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
                 ...coord,
@@ -156,6 +196,16 @@ const RenderOPGAnnotationsList = ({
                 ),
               })),
             };
+          } else if (layer.checkType === "tooth") {
+            return {
+              ...layer,
+              annotationsTooth: layer?.annotationsTooth?.map((annots: any) => ({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.filter(
+                  (coord: any) => coord.id !== coordId
+                ),
+              })),
+            };
           }
           return layer;
         });
@@ -200,7 +250,18 @@ const RenderOPGAnnotationsList = ({
           }else if (layer.checkType == "path"){
             return {
               ...layer,
-              annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+              annotationsPath: layer?.annotationsPath?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
+                  ...coord,
+                  label: coord.id === coordId ? newLabel : coord.label,
+                }))
+              }))
+            }
+          }else if (layer.checkType == "tooth"){
+            return {
+              ...layer,
+              annotationsTooth: layer?.annotationsTooth?.map((annots:any)=>({
                 ...annots,
                 roi_xyxy: annots.roi_xyxy.map((coord: any) => ({
                   ...coord,
@@ -263,7 +324,15 @@ const RenderOPGAnnotationsList = ({
           }else if (layer.checkType == "path"){
             return {
               ...layer,
-              annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+              annotationsPath: layer?.annotationsPath?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId ? { ...coord, [field]: value } : coord))
+              }))
+            }
+          }else if (layer.checkType == "tooth"){
+            return {
+              ...layer,
+              annotationsTooth: layer?.annotationsTooth?.map((annots:any)=>({
                 ...annots,
                 roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId ? { ...coord, [field]: value } : coord))
               }))
@@ -313,7 +382,17 @@ const RenderOPGAnnotationsList = ({
           }else if (layer.checkType == "path"){
             return {
               ...layer,
-              annotationsPath: layer?.annotationsQc?.map((annots:any)=>({
+              annotationsPath: layer?.annotationsPath?.map((annots:any)=>({
+                ...annots,
+                roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId
+                  ? { ...coord, [field]: !coord[field] }
+                  : coord))
+              }))
+            }
+          }else if (layer.checkType == "tooth"){
+            return {
+              ...layer,
+              annotationsTooth: layer?.annotationsTooth?.map((annots:any)=>({
                 ...annots,
                 roi_xyxy: annots.roi_xyxy.map((coord: any) => (coord.id === coordId
                   ? { ...coord, [field]: !coord[field] }
@@ -329,7 +408,7 @@ const RenderOPGAnnotationsList = ({
   };
 
   return (
-    <div className="space-y-2 text-sm">
+    <div className="space-y-2 text-sm pb-[150px] z-50">
       {annotations?.map((annotation: any) => (
         <div key={annotation.class} className="mb-4">
           {annotation.roi_xyxy.map((coord: any) => (
@@ -377,12 +456,14 @@ const RenderOPGAnnotationsList = ({
                     />
                   ) : (
                     <div className="flex gap-1 text-sm overflow-hidden">
-                      <span
-                        className={textColor}
-                        style={{ whiteSpace: "nowrap" }}
-                      >
-                        {coord.label}.
-                      </span>
+                      {checkType !== "tooth" && (
+                        <span
+                          className={textColor}
+                          style={{ whiteSpace: "nowrap" }}
+                        >
+                          {coord.label}.
+                        </span>
+                      )}
                       <span
                         className={textColor}
                         style={{ overflow: "hidden", textOverflow: "ellipsis" }}
@@ -438,7 +519,9 @@ const RenderOPGAnnotationsList = ({
                       value={
                         coord.strokeColor
                           ? rgbaToHex(coord.strokeColor)
-                          : "#FF0000"
+                          : checkType === "tooth" 
+                            ? rgbaToHex(getToothColor(annotation.roi_xyxy.indexOf(coord)))
+                            : "#FF0000"
                       }
                       onChange={(e) =>
                         updateAnnotationColor(
@@ -471,7 +554,11 @@ const RenderOPGAnnotationsList = ({
                     <input
                       type="color"
                       value={
-                        coord.bgColor ? rgbaToHex(coord.bgColor) : "#ff0000"
+                        coord.bgColor 
+                          ? rgbaToHex(coord.bgColor) 
+                          : checkType === "tooth" 
+                            ? rgbaToHex(getToothColor(annotation.roi_xyxy.indexOf(coord)))
+                            : "#ff0000"
                       }
                       onChange={(e) =>
                         updateAnnotationColor(

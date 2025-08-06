@@ -172,7 +172,7 @@ const RenderCustomAnnotationsList = ({
   };
 
   return (
-    <div className="space-y-2 text-sm">
+    <div className="space-y-2 text-sm pb-[150px]">
       {drawings.length > 0 && (
         <div className="mb-4">
           {drawings.map((drawing: any) => (

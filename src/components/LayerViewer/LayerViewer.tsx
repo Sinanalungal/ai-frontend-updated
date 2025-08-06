@@ -36,6 +36,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RenderOPGAnnotationsList from "../Viewer/RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "../Viewer/RenderCustomAnnotationsList";
 import { ToolButton } from "../Viewer/ToolButton";
+import { ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { checkTypeOptions } from "@/constants/teethRelated";
 
 const SNAP_THRESHOLD = 10;
 
@@ -88,13 +96,15 @@ interface Layer {
   file: File | null;
   annotationsQc: Annotation[] | null;
   annotationsPath: Annotation[] | null;
+  annotationsTooth: Annotation[] | null;
   drawings: Drawing[];
   drawingHistory: Drawing[][];
   responseQc: UploadResponse | null;
   responsePath: UploadResponse | null;
+  responseTooth: UploadResponse | null;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   containerRef: React.RefObject<HTMLDivElement>;
-  checkType: "qc" | "path";
+  checkType: "qc" | "path" | "tooth";
   // openDrawer:boolean,
 }
 
@@ -113,11 +123,13 @@ export default function LayerViewer() {
       id: 0,
       file: null,
       annotationsQc: null,
-      annotationsPath:null,
+      annotationsPath: null,
+      annotationsTooth: null,
       drawings: [],
       drawingHistory: [],
       responseQc: null,
       responsePath: null,
+      responseTooth: null,
       canvasRef: React.createRef<any>(),
       containerRef: React.createRef<any>(),
       checkType: "qc",
@@ -204,6 +216,9 @@ export default function LayerViewer() {
     const layer = layers?.find((l) => l.id === selectedLayer);
     if (!layer?.file) return;
 
+    // Close the drawer when loading starts
+    setInfoPanelOpen(false);
+
     setIsLoading((prev) => {
       const newLoading = [...prev];
       newLoading[selectedLayer] = true;
@@ -212,10 +227,10 @@ export default function LayerViewer() {
 
     const formData = new FormData();
     formData.append("file", layer.file);
-    // formData.append("model_name", layer.checkType);
-    formData.append("model_name", "qc");
     
     try {
+      // Call QC API
+      formData.append("model_name", "qc");
       const resQc = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/inference/`,
         formData,
@@ -227,8 +242,22 @@ export default function LayerViewer() {
         }
       );
 
-      formData.append("model_name", "path");
+      // Call Pathology API
+      formData.set("model_name", "path");
       const resPath = await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/inference/`,
+        formData,
+        {
+          headers: {
+            "Content-Type": "multipart/form-data",
+            "ngrok-skip-browser-warning": "1",
+          },
+        }
+      );
+
+      // Call Tooth API
+      formData.set("model_name", "tooth");
+      const resTooth = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/inference/`,
         formData,
         {
@@ -241,7 +270,8 @@ export default function LayerViewer() {
 
       const responseDataQc = resQc.data as UploadResponse;
       const responseDataPath = resPath.data as UploadResponse;
-      processApiResponse(responseDataQc,responseDataPath);
+      const responseDataTooth = resTooth.data as UploadResponse;
+      processApiResponse(responseDataQc, responseDataPath, responseDataTooth);
     } catch (error) {
       console.error(error);
       toast.error("Failed to process image");
@@ -254,9 +284,10 @@ export default function LayerViewer() {
     }
   };
 
-  const processApiResponse = (responseDataQc: UploadResponse, responseDataPath: UploadResponse) => {
+  const processApiResponse = (responseDataQc: UploadResponse, responseDataPath: UploadResponse, responseDataTooth: UploadResponse) => {
     const classMapQc = new Map<string, Annotation>();
     const classMapPath = new Map<string, Annotation>();
+    const classMapTooth = new Map<string, Annotation>();
   
     // Process Qc
     responseDataQc.data.results.forEach((result, index) => {
@@ -280,7 +311,7 @@ export default function LayerViewer() {
         strokeColor: classColors[className]?.[1] || "#FF0000",
         bgColor: classColors[className]?.[0] || "rgba(255, 0, 0, 0.5)",
         showStroke: true,
-        showBackground: layers?.find((l) => l.id === selectedLayer)?.checkType === "path",
+        showBackground: layers?.find((l) => l.id === selectedLayer)?.checkType === "path" || layers?.find((l) => l.id === selectedLayer)?.checkType === "tooth",
         showLabel: false,
         openDrawer: false
       });
@@ -313,6 +344,43 @@ export default function LayerViewer() {
         openDrawer: false
       });
     });
+
+    // Process Tooth with red colors
+    const toothColors = [
+      "rgba(255, 0, 0, 0.5)",    // Red
+    ];
+
+    const toothStrokeColors = [
+      "rgba(255, 0, 0, 0.8)",    // Red
+    ];
+
+    responseDataTooth.data.results.forEach((result, index) => {
+      const className = result.class;
+  
+      if (!classMapTooth.has(className)) {
+        classMapTooth.set(className, {
+          class: className,
+          roi_xyxy: [],
+        });
+      }
+  
+      const annotation = classMapTooth.get(className)!;
+      const colorIndex = index % toothColors.length;
+  
+      annotation.roi_xyxy.push({
+        coordinates: result.roi_xyxy[0],
+        poly: result.poly ? result.poly[0] : undefined,
+        visible: true,
+        id: `${className}-tooth-${index}`,
+        label: (index + 1).toString(),
+        strokeColor: toothStrokeColors[colorIndex],
+        bgColor: toothColors[colorIndex],
+        showStroke: true,
+        showBackground: true,
+        showLabel: false,
+        openDrawer: false
+      });
+    });
   
     setLayers((prev) =>
       prev.map((layer) =>
@@ -321,8 +389,10 @@ export default function LayerViewer() {
               ...layer,
               annotationsQc: Array.from(classMapQc.values()),
               annotationsPath: Array.from(classMapPath.values()),
+              annotationsTooth: Array.from(classMapTooth.values()),
               responseQc: responseDataQc,
               responsePath: responseDataPath,
+              responseTooth: responseDataTooth,
             }
           : layer
       )
@@ -569,12 +639,12 @@ export default function LayerViewer() {
     scaleY: number,
     layer: Layer
   ) => {    
-    const annotateList = layer.checkType === "qc" ? layer?.annotationsQc : layer?.annotationsPath;
+    const annotateList = layer.checkType === "qc" ? layer?.annotationsQc : layer.checkType === "path" ? layer?.annotationsPath : layer?.annotationsTooth;
     for (const annotation of annotateList ||[]) {
       for (const coord of annotation.roi_xyxy) {
         if (!coord.visible) continue;
 
-        if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
+        if ((layer.checkType === "path" || layer.checkType === "tooth") && coord.poly && coord.poly.length > 0) {
           const scaledPoly = coord.poly.map(([px, py]) => [
             px * scaleX,
             py * scaleY,
@@ -730,8 +800,8 @@ export default function LayerViewer() {
             layer.id === targetLayer.id
               ? {
                   ...layer,
-                  [layer.checkType === "qc" ? "annotationsQc" : "annotationsPath"]:
-                    (layer.checkType === "qc" ? layer.annotationsQc : layer.annotationsPath)?.map(
+                  [layer.checkType === "qc" ? "annotationsQc" : layer.checkType === "path" ? "annotationsPath" : "annotationsTooth"]:
+                    (layer.checkType === "qc" ? layer.annotationsQc : layer.checkType === "path" ? layer.annotationsPath : layer.annotationsTooth)?.map(
                       (annotation) => {
                         if (annotation.class !== shape.className) return annotation;
                         return {
@@ -815,13 +885,13 @@ export default function LayerViewer() {
         const scaleY = displayedHeight / imageSize.height;
 
         const annotateList =
-        layer.checkType === "qc" ? layer?.annotationsQc : layer?.annotationsPath;
+        layer.checkType === "qc" ? layer?.annotationsQc : layer.checkType === "path" ? layer?.annotationsPath : layer?.annotationsTooth;
 
         annotateList?.forEach((annotation) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
-            if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
+            if ((layer.checkType === "path" || layer.checkType === "tooth") && coord.poly && coord.poly.length > 0) {
               ctx.beginPath();
               ctx.fillStyle = coord.showBackground ? coord.bgColor : "transparent";
               ctx.strokeStyle = coord.showStroke ? coord.strokeColor : "transparent";
@@ -838,7 +908,7 @@ export default function LayerViewer() {
               if (coord.showBackground) ctx.fill();
               if (coord.showStroke) ctx.stroke();
               if (coord.showLabel) {
-                const label = `${coord.label}. ${annotation.class}`.trim();
+                const label = layer.checkType === "tooth" ? annotation.class : `${coord.label}. ${annotation.class}`.trim();
                 if (label) {
                   ctx.font = "12px Poppins";
                   const textMetrics = ctx.measureText(label);
@@ -888,7 +958,7 @@ export default function LayerViewer() {
               }
 
               if (coord.showLabel) {
-                const label = `${coord.label} ${annotation.class}`.trim();
+                const label = layer.checkType === "tooth" ? annotation.class : `${coord.label} ${annotation.class}`.trim();
                 if (label) {
                   ctx.font = "10px Poppins";
                   const textMetrics = ctx.measureText(label);
@@ -1054,10 +1124,12 @@ export default function LayerViewer() {
         file: null,
         annotationsQc: null,
         annotationsPath: null,
+        annotationsTooth: null,
         drawings: [],
         drawingHistory: [],
         responseQc: null,
         responsePath: null,
+        responseTooth: null,
         canvasRef: React.createRef<any>(),
         containerRef: React.createRef<any>(),
         checkType: "qc",
@@ -1074,16 +1146,6 @@ export default function LayerViewer() {
   // const handleToggleFullscreen = (layer: Layer) => {
   //   setFullScreenLayer(fullScreenLayer ? null : layer);
   // };
-
-   const toggleLayerCheckType = (layerId: number) => {
-    setLayers((prev) =>
-      prev.map((layer) =>
-        layer.id === layerId
-          ? { ...layer, checkType: layer.checkType === "qc" ? "path" : "qc" }
-          : layer
-      )
-    );
-  };
 
   const startDrawing = (e: React.MouseEvent<HTMLCanvasElement>) => {
     if (
@@ -1519,12 +1581,12 @@ export default function LayerViewer() {
       tempCtx.drawImage(img, 0, 0, imageSize.width, imageSize.height);
 
       if (isAnnotationEnabled) {
-        const annotateList = layer.checkType === "qc" ? layer?.annotationsQc : layer?.annotationsPath;
+        const annotateList = layer.checkType === "qc" ? layer?.annotationsQc : layer.checkType === "path" ? layer?.annotationsPath : layer?.annotationsTooth;
         annotateList?.forEach((annotation) => {
           annotation.roi_xyxy.forEach((coord) => {
             if (!coord.visible) return;
 
-            if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
+            if ((layer.checkType === "path" || layer.checkType === "tooth") && coord.poly && coord.poly.length > 0) {
               tempCtx.beginPath();
               tempCtx.fillStyle = coord.showBackground ? coord.bgColor : "transparent";
               tempCtx.strokeStyle = coord.showStroke ? coord.strokeColor : "transparent";
@@ -1571,7 +1633,7 @@ export default function LayerViewer() {
               }
 
               if (coord.showLabel) {
-                const label = `${annotation.class} ${coord.label}`;
+                const label = layer.checkType === "tooth" ? annotation.class : `${annotation.class} ${coord.label}`;
                 tempCtx.font = "12px Poppins";
                 const textMetrics = tempCtx.measureText(label);
                 tempCtx.fillStyle =
@@ -1622,7 +1684,7 @@ export default function LayerViewer() {
 
   useEffect(() => {
     const layer = layers?.find((l) => l.id === selectedLayer);
-    if (layer?.file && !layer.responseQc && !layer.responsePath) {
+    if (layer?.file && !layer.responseQc && !layer.responsePath && !layer.responseTooth) {
       handleUpload();
     }
   }, [layers, selectedLayer]);
@@ -1669,23 +1731,50 @@ export default function LayerViewer() {
         </div>
         <div className="flex items-center gap-3">
           <TooltipProvider delayDuration={200}>
-            {/* <Tooltip>
+            <Tooltip>
               <TooltipTrigger asChild>
-                <button
-                  className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                  onClick={() => toggleLayerCheckType(selectedLayer)}
-                >
-                  <span className="max-sm:hidden">Switch to</span>
-                  <span>{layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}</span>
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                    >
+                      <span className="max-sm:hidden">Switch to</span>
+                      <span>
+                        {checkTypeOptions.find(option => option.value === layers?.find((l) => l.id === selectedLayer)?.checkType)?.label || "QC"}
+                      </span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {checkTypeOptions.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => {
+                          setLayers((prev) =>
+                            prev.map((layer) =>
+                              layer.id === selectedLayer
+                                ? { ...layer, checkType: option.value as "qc" | "path" | "tooth" }
+                                : layer
+                            )
+                          );
+                        }}
+                        className={`cursor-pointer ${
+                          layers?.find((l) => l.id === selectedLayer)?.checkType === option.value ? "bg-accent" : ""
+                        }`}
+                      >
+                        {option.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
                 className="px-3 py-1.5 text-xs font-medium shadow-lg"
               >
-                Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
+                Switch Check Type
               </TooltipContent>
-            </Tooltip> */}
+            </Tooltip>
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
@@ -1725,18 +1814,43 @@ export default function LayerViewer() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                onClick={() => toggleLayerCheckType(selectedLayer)}
-              >
-                Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "QC"}
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                  >
+                    Switch to {checkTypeOptions.find(option => option.value === layers?.find((l) => l.id === selectedLayer)?.checkType)?.label || "QC"}
+                    <ChevronDown size={12} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-40">
+                  {checkTypeOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => {
+                        setLayers((prev) =>
+                          prev.map((layer) =>
+                            layer.id === selectedLayer
+                              ? { ...layer, checkType: option.value as "qc" | "path" | "tooth" }
+                              : layer
+                          )
+                        );
+                      }}
+                      className={`cursor-pointer ${
+                        layers?.find((l) => l.id === selectedLayer)?.checkType === option.value ? "bg-accent" : ""
+                      }`}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
               className="px-3 py-1.5 text-xs font-medium shadow-lg"
             >
-              Switch to {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc" ? "Pathology" : "Quality"} Check
+              Switch Check Type
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>
@@ -1990,10 +2104,10 @@ export default function LayerViewer() {
                       <LayerOptions
                         layer={layer}
                         theme={theme}
-                        toggleLayerCheckType={toggleLayerCheckType}
                         setFullScreenLayer={setFullScreenLayer}
                         handleDeleteLayer={handleDeleteLayer}
                         handleDeleteLayerImg={() => handleRemoveImage(layer.id)}
+                        setLayers={setLayers}
                       />
                       <div className="relative inline-block">
                         <img
@@ -2055,7 +2169,7 @@ export default function LayerViewer() {
                     <div key={layer.id}>
                       <p className="py-2">Layer {layer.id + 1}</p>
                       <RenderOPGAnnotationsList
-                        annotations={layer.checkType=="qc"?layer?.annotationsQc:layer?.annotationsPath}
+                        annotations={layer.checkType=="qc"?layer?.annotationsQc:layer.checkType=="path"?layer?.annotationsPath:layer?.annotationsTooth}
                         theme={theme}
                         editingId={editingId}
                         setEditingId={setEditingId}
@@ -2063,6 +2177,7 @@ export default function LayerViewer() {
                         textColor={textColor}
                         secondaryTextColor={secondaryTextColor}
                         viewer={"layer"}
+                        checkType={layer.checkType}
                       />
                     </div>
                   ))}

@@ -3,9 +3,8 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { EllipsisVertical, Fullscreen, Trash2, ImageMinus } from "lucide-react";
+import { EllipsisVertical, Fullscreen, Trash2, ImageMinus, Ruler, Download } from "lucide-react";
 import React from "react";
-import { HiOutlineSwitchHorizontal } from "react-icons/hi";
 
 
 const LayerOptions: React.FC<any> = ({
@@ -13,13 +12,33 @@ const LayerOptions: React.FC<any> = ({
   theme,
   setFullScreenLayer,
   handleDeleteLayer,
-  toggleLayerCheckType,
   handleDeleteLayerImg,
+  setLayers
 }) => {
   // console.log(layer,"theeeese layer");
   
 //   const textColor = theme === "dark" ? "text-gray-900" : "text-gray-900";
   const iconColor = theme === "dark" ? "text-zinc-100" : "text-gray-500";
+
+  // Get the unused check types for this layer
+  const getUnusedCheckTypes = () => {
+    const allTypes = ["qc", "path", "tooth"];
+    const currentType = layer.checkType;
+    return allTypes.filter(type => type !== currentType);
+  };
+
+  const unusedCheckTypes = getUnusedCheckTypes();
+
+  // Function to switch to a specific check type
+  const switchToCheckType = (targetType: "qc" | "path" | "tooth") => {
+    setLayers((prev: any) =>
+      prev.map((l: any) =>
+        l.id === layer.id
+          ? { ...l, checkType: targetType }
+          : l
+      )
+    );
+  };
 
   return (
     <div className="absolute top-0 right-0 z-20 p-2 group">
@@ -29,7 +48,7 @@ const LayerOptions: React.FC<any> = ({
       </p>
 
       {/* Hover menu */}
-      <div className="hidden group-hover:flex flex-col absolute text-xs top-8 -mt-1 right-0 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-md shadow-lg z-50 w-[150px]">
+      <div className="hidden group-hover:flex flex-col absolute text-xs top-8 -mt-1 right-0 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-700 rounded-md shadow-lg z-50 w-[180px]">
         <TooltipProvider>
           {/* Fullscreen */}
           <Tooltip>
@@ -44,15 +63,36 @@ const LayerOptions: React.FC<any> = ({
             </TooltipTrigger>
             {/* <TooltipContent>Set Fullscreen</TooltipContent> */}
           </Tooltip>
-          <Tooltip>
-          <TooltipTrigger asChild>
-            <button className="w-full flex items-center gap-2 px-4 py-2 text-xs hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-900"
-             onClick={() => toggleLayerCheckType(layer.id)}>
-              <HiOutlineSwitchHorizontal strokeWidth={1.2} size={16} />
-              <span>Switch to {layer.checkType === "qc" ? "Path" : "QC"}</span>
-            </button>
-          </TooltipTrigger>
-        </Tooltip>
+          
+          {/* First unused check type button */}
+          {unusedCheckTypes[0] && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`w-full flex items-center gap-2 px-4 py-2 text-xs hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-900`}
+                  onClick={() => switchToCheckType(unusedCheckTypes[0] as "qc" | "path" | "tooth")}
+                >
+                  {/* <Ruler strokeWidth={1.2} size={16} /> */}
+                  <span>Switch to {unusedCheckTypes[0] === "qc" ? "Quality" : unusedCheckTypes[0] === "path" ? "Pathology" : "Tooth"}</span>
+                </button>
+              </TooltipTrigger>
+            </Tooltip>
+          )}
+
+          {/* Second unused check type button */}
+          {unusedCheckTypes[1] && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  className={`w-full flex items-center gap-2 px-4 py-2 text-xs hover:bg-gray-100 dark:hover:bg-zinc-800 text-gray-900`}
+                  onClick={() => switchToCheckType(unusedCheckTypes[1] as "qc" | "path" | "tooth")}
+                >
+                  {/* <Download strokeWidth={1.2} size={16} /> */}
+                  <span>Switch to {unusedCheckTypes[1] === "qc" ? "Quality" : unusedCheckTypes[1] === "path" ? "Pathology" : "Tooth"}</span>
+                </button>
+              </TooltipTrigger>
+            </Tooltip>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>

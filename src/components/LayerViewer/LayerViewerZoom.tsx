@@ -38,6 +38,14 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import RenderOPGAnnotationsList from "../Viewer/RenderOpgAnnotationsList";
 import RenderCustomAnnotationsList from "../Viewer/RenderCustomAnnotationsList";
 import { ToolButton } from "../Viewer/ToolButton";
+import { ChevronDown } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { checkTypeOptions } from "@/constants/teethRelated";
 
 const SNAP_THRESHOLD = 10;
 
@@ -100,7 +108,7 @@ interface Layer {
   responsePath: UploadResponse | null;
   canvasRef: React.RefObject<HTMLCanvasElement>;
   containerRef: React.RefObject<HTMLDivElement>;
-  checkType: "qc" | "path";
+  checkType: "qc" | "path" | "tooth";
 }
 
 export default function LayerViewerZoom() {
@@ -310,7 +318,7 @@ export default function LayerViewerZoom() {
         bgColor: classColors[className]?.[0] || "rgba(255, 0, 0, 0.5)",
         showStroke: true,
         showBackground:
-          layers?.find((l) => l.id === selectedLayer)?.checkType === "path",
+          layers?.find((l) => l.id === selectedLayer)?.checkType === "path" || layers?.find((l) => l.id === selectedLayer)?.checkType === "tooth",
         showLabel: false,
         openDrawer: false,
       });
@@ -604,7 +612,7 @@ export default function LayerViewerZoom() {
       for (const coord of annotation.roi_xyxy) {
         if (!coord.visible) continue;
 
-        if (layer.checkType === "path" && coord.poly && coord.poly.length > 0) {
+        if ((layer.checkType === "path" || layer.checkType === "tooth") && coord.poly && coord.poly.length > 0) {
           const scaledPoly = coord.poly.map(([px, py]) => [
             px * scaleX,
             py * scaleY,
@@ -865,7 +873,7 @@ export default function LayerViewerZoom() {
             if (!coord.visible) return;
 
             if (
-              layer.checkType === "path" &&
+              (layer.checkType === "path" || layer.checkType === "tooth") &&
               coord.poly &&
               coord.poly.length > 0
             ) {
@@ -889,7 +897,7 @@ export default function LayerViewerZoom() {
               if (coord.showBackground) ctx.fill();
               if (coord.showStroke) ctx.stroke();
               if (coord.showLabel) {
-                const label = `${coord.label}. ${annotation.class}`.trim();
+                const label = layer.checkType === "tooth" ? annotation.class : `${coord.label}. ${annotation.class}`.trim();
                 if (label) {
                   ctx.font = `${12 / zoom}px Poppins`;
                   const textMetrics = ctx.measureText(label);
@@ -941,7 +949,7 @@ export default function LayerViewerZoom() {
               }
 
               if (coord.showLabel) {
-                const label = `${coord.label} ${annotation.class}`.trim();
+                const label = layer.checkType === "tooth" ? annotation.class : `${coord.label} ${annotation.class}`.trim();
                 if (label) {
                   ctx.font = `${10 / zoom}px Poppins`;
                   const textMetrics = ctx.measureText(label);
@@ -1149,7 +1157,10 @@ export default function LayerViewerZoom() {
     setLayers((prev) =>
       prev.map((layer) =>
         layer.id === layerId
-          ? { ...layer, checkType: layer.checkType === "qc" ? "path" : "qc" }
+          ? { 
+              ...layer, 
+              checkType: layer.checkType === "qc" ? "path" : layer.checkType === "path" ? "tooth" : "qc" 
+            }
           : layer
       )
     );
@@ -1697,7 +1708,7 @@ export default function LayerViewerZoom() {
             if (!coord.visible) return;
 
             if (
-              layer.checkType === "path" &&
+              (layer.checkType === "path" || layer.checkType === "tooth") &&
               coord.poly &&
               coord.poly.length > 0
             ) {
@@ -1751,7 +1762,7 @@ export default function LayerViewerZoom() {
               }
 
               if (coord.showLabel) {
-                const label = `${annotation.class} ${coord.label}`;
+                const label = layer.checkType === "tooth" ? annotation.class : `${annotation.class} ${coord.label}`;
                 tempCtx.font = "12px Poppins";
                 const textMetrics = tempCtx.measureText(label);
                 tempCtx.fillStyle =
@@ -1854,28 +1865,46 @@ export default function LayerViewerZoom() {
           <TooltipProvider delayDuration={200}>
             <Tooltip>
               <TooltipTrigger asChild>
-                <button
-                  className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                  onClick={() => toggleLayerCheckType(selectedLayer)}
-                >
-                  <span className="max-sm:hidden">Switch to</span>
-                  <span>
-                    {layers?.find((l) => l.id === selectedLayer)?.checkType ===
-                    "qc"
-                      ? "Pathology"
-                      : "QC"}
-                  </span>
-                </button>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      className={`p-2 max-[400px]:hidden text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                    >
+                      <span className="max-sm:hidden">Switch to</span>
+                      <span>
+                        {checkTypeOptions.find(option => option.value === layers?.find((l) => l.id === selectedLayer)?.checkType)?.label || "QC"}
+                      </span>
+                      <ChevronDown size={14} />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-48">
+                    {checkTypeOptions.map((option) => (
+                      <DropdownMenuItem
+                        key={option.value}
+                        onClick={() => {
+                          setLayers((prev) =>
+                            prev.map((layer) =>
+                              layer.id === selectedLayer
+                                ? { ...layer, checkType: option.value as "qc" | "path" | "tooth" }
+                                : layer
+                            )
+                          );
+                        }}
+                        className={`cursor-pointer ${
+                          layers?.find((l) => l.id === selectedLayer)?.checkType === option.value ? "bg-accent" : ""
+                        }`}
+                      >
+                        {option.label}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </TooltipTrigger>
               <TooltipContent
                 side="bottom"
                 className="px-3 py-1.5 text-xs font-medium shadow-lg"
               >
-                Switch to{" "}
-                {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc"
-                  ? "Pathology"
-                  : "Quality"}{" "}
-                Check
+                Switch Check Type
               </TooltipContent>
             </Tooltip>
             <Tooltip>
@@ -1917,25 +1946,43 @@ export default function LayerViewerZoom() {
         <TooltipProvider delayDuration={200}>
           <Tooltip>
             <TooltipTrigger asChild>
-              <button
-                className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
-                onClick={() => toggleLayerCheckType(selectedLayer)}
-              >
-                Switch to{" "}
-                {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc"
-                  ? "Pathology"
-                  : "QC"}
-              </button>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    className={`p-2 text-xs ${buttonHoverColor} rounded-full flex items-center gap-1`}
+                  >
+                    Switch to {checkTypeOptions.find(option => option.value === layers?.find((l) => l.id === selectedLayer)?.checkType)?.label || "QC"}
+                    <ChevronDown size={12} />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="center" className="w-40">
+                  {checkTypeOptions.map((option) => (
+                    <DropdownMenuItem
+                      key={option.value}
+                      onClick={() => {
+                        setLayers((prev) =>
+                          prev.map((layer) =>
+                            layer.id === selectedLayer
+                              ? { ...layer, checkType: option.value as "qc" | "path" | "tooth" }
+                              : layer
+                          )
+                        );
+                      }}
+                      className={`cursor-pointer ${
+                        layers?.find((l) => l.id === selectedLayer)?.checkType === option.value ? "bg-accent" : ""
+                      }`}
+                    >
+                      {option.label}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </TooltipTrigger>
             <TooltipContent
               side="bottom"
               className="px-3 py-1.5 text-xs font-medium shadow-lg"
             >
-              Switch to{" "}
-              {layers?.find((l) => l.id === selectedLayer)?.checkType === "qc"
-                ? "Pathology"
-                : "Quality"}{" "}
-              Check
+              Switch Check Type
             </TooltipContent>
           </Tooltip>
         </TooltipProvider>

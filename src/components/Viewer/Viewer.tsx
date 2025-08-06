@@ -974,36 +974,110 @@ export default function Viewer() {
   const processApiResponse = (responseData: UploadResponse) => {
     const classMap = new Map<string, Annotation>();
 
-    responseData.data.results.forEach((result, index) => {
-      const className = result.class;
+    // If it's tooth data, sort by class and use tooth-specific colors
+    if (checkType === "tooth") {
+             const toothColorMap = {
+         "11": ["rgba(255, 0, 0, 0.4)", "rgba(255, 0, 0, 0.8)"],      // Red
+         "12": ["rgba(0, 255, 0, 0.4)", "rgba(0, 255, 0, 0.8)"],      // Green
+         "13": ["rgba(0, 0, 255, 0.4)", "rgba(0, 0, 255, 0.8)"],      // Blue
+         "14": ["rgba(255, 255, 0, 0.4)", "rgba(255, 255, 0, 0.8)"],  // Yellow
+         "15": ["rgba(255, 0, 255, 0.4)", "rgba(255, 0, 255, 0.8)"],  // Magenta
+         "16": ["rgba(0, 255, 255, 0.4)", "rgba(0, 255, 255, 0.8)"],  // Cyan
+         "17": ["rgba(255, 165, 0, 0.4)", "rgba(255, 165, 0, 0.8)"],  // Orange
+         "18": ["rgba(128, 0, 128, 0.4)", "rgba(128, 0, 128, 0.8)"],  // Purple
+         "21": ["rgba(255, 20, 147, 0.4)", "rgba(255, 20, 147, 0.8)"], // Deep Pink
+         "22": ["rgba(0, 128, 0, 0.4)", "rgba(0, 128, 0, 0.8)"],      // Dark Green
+         "23": ["rgba(128, 128, 0, 0.4)", "rgba(128, 128, 0, 0.8)"],  // Olive
+         "24": ["rgba(255, 69, 0, 0.4)", "rgba(255, 69, 0, 0.8)"],    // Red Orange
+         "25": ["rgba(138, 43, 226, 0.4)", "rgba(138, 43, 226, 0.8)"], // Blue Violet
+         "26": ["rgba(75, 0, 130, 0.4)", "rgba(75, 0, 130, 0.8)"],    // Indigo
+         "27": ["rgba(205, 92, 92, 0.4)", "rgba(205, 92, 92, 0.8)"],  // Indian Red
+         "28": ["rgba(233, 150, 122, 0.4)", "rgba(233, 150, 122, 0.8)"], // Dark Salmon
+         "31": ["rgba(255, 182, 193, 0.4)", "rgba(255, 182, 193, 0.8)"], // Light Pink
+         "32": ["rgba(255, 105, 180, 0.4)", "rgba(255, 105, 180, 0.8)"], // Hot Pink
+         "33": ["rgba(184, 134, 11, 0.4)", "rgba(184, 134, 11, 0.8)"],   // Dark Goldenrod
+         "34": ["rgba(128, 128, 128, 0.4)", "rgba(128, 128, 128, 0.8)"], // Gray
+         "35": ["rgba(169, 169, 169, 0.4)", "rgba(169, 169, 169, 0.8)"], // Dark Gray
+         "36": ["rgba(148, 0, 211, 0.4)", "rgba(148, 0, 211, 0.8)"],     // Dark Violet
+         "37": ["rgba(186, 85, 211, 0.4)", "rgba(186, 85, 211, 0.8)"],   // Medium Orchid
+         "38": ["rgba(60, 179, 113, 0.4)", "rgba(60, 179, 113, 0.8)"],   // Medium Sea Green
+         "41": ["rgba(255, 215, 0, 0.4)", "rgba(255, 215, 0, 0.8)"],     // Gold
+         "42": ["rgba(0, 128, 255, 0.4)", "rgba(0, 128, 255, 0.8)"],     // Deep Sky Blue
+         "43": ["rgba(192, 192, 192, 0.4)", "rgba(192, 192, 192, 0.8)"], // Silver
+         "44": ["rgba(255, 20, 147, 0.4)", "rgba(255, 20, 147, 0.8)"],   // Deep Pink
+         "45": ["rgba(34, 139, 34, 0.4)", "rgba(34, 139, 34, 0.8)"],     // Forest Green
+         "46": ["rgba(219, 112, 147, 0.4)", "rgba(219, 112, 147, 0.8)"], // Pale Violet Red
+         "47": ["rgba(218, 165, 32, 0.4)", "rgba(218, 165, 32, 0.8)"],   // Goldenrod
+         "48": ["rgba(210, 105, 30, 0.4)", "rgba(210, 105, 30, 0.8)"],   // Chocolate
+       };
 
-      if (!classMap.has(className)) {
-        classMap.set(className, {
-          class: className,
-          roi_xyxy: [],
-        });
-      }
-
-      const annotation = classMap.get(className)!;
-
-      annotation.roi_xyxy.push({
-        coordinates: result.roi_xyxy[0],
-        poly: result.poly ? result.poly[0] : undefined,
-        visible: true,
-        id: `${className}-${index}`,
-        label: (index + 1).toString(),
-        strokeColor: classColors[className]
-          ? classColors[className][1]
-          : "rgb(255,0,0)",
-        bgColor: classColors[className]
-          ? classColors[className][0]
-          : "rgba(255, 0, 0, 0.5)",
-        showStroke: true,
-        showBackground: checkType === "path" || checkType === "tooth" ? true : false,
-        openDrawer: false,
-        showLabel: false,
+      // Sort tooth results by class (low to high)
+      const sortedResults = [...responseData.data.results].sort((a, b) => {
+        const classA = parseInt(a.class);
+        const classB = parseInt(b.class);
+        return classA - classB;
       });
-    });
+
+      sortedResults.forEach((result, index) => {
+        const className = result.class;
+
+        if (!classMap.has(className)) {
+          classMap.set(className, {
+            class: className,
+            roi_xyxy: [],
+          });
+        }
+
+        const annotation = classMap.get(className)!;
+        const colors = toothColorMap[className as keyof typeof toothColorMap] || ["rgba(255, 0, 0, 0.3)", "rgba(255, 0, 0, 0.8)"];
+
+        annotation.roi_xyxy.push({
+          coordinates: result.roi_xyxy[0],
+          poly: result.poly ? result.poly[0] : undefined,
+          visible: true,
+          id: `${className}-${index}`,
+          label: (index + 1).toString(),
+          strokeColor: colors[1],
+          bgColor: colors[0],
+          showStroke: true,
+          showBackground: true,
+          openDrawer: false,
+          showLabel: false,
+        });
+      });
+    } else {
+      // For non-tooth data, use existing logic
+      responseData.data.results.forEach((result, index) => {
+        const className = result.class;
+
+        if (!classMap.has(className)) {
+          classMap.set(className, {
+            class: className,
+            roi_xyxy: [],
+          });
+        }
+
+        const annotation = classMap.get(className)!;
+
+        annotation.roi_xyxy.push({
+          coordinates: result.roi_xyxy[0],
+          poly: result.poly ? result.poly[0] : undefined,
+          visible: true,
+          id: `${className}-${index}`,
+          label: (index + 1).toString(),
+          strokeColor: classColors[className]
+            ? classColors[className][1]
+            : "rgb(255,0,0)",
+          bgColor: classColors[className]
+            ? classColors[className][0]
+            : "rgba(255, 0, 0, 0.5)",
+          showStroke: true,
+          showBackground: checkType === "path" ? true : false,
+          openDrawer: false,
+          showLabel: false,
+        });
+      });
+    }
 
     setAnnotations(Array.from(classMap.values()));
   };

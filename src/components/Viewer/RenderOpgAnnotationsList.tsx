@@ -3,20 +3,41 @@ import { ChevronDown, ChevronUp } from "lucide-react";
 import { RiDeleteBinLine } from "react-icons/ri";
 import { hexToRgba, rgbaToHex } from "@/utility/RgbaHexConvertions";
 
-// Different colors for tooth mode
-const getToothColor = (index: number) => {
-  const toothColors = [
-    "rgba(255, 0, 0, 0.5)",    // Red
-    "rgba(0, 255, 0, 0.5)",    // Green
-    "rgba(0, 0, 255, 0.5)",    // Blue
-    "rgba(255, 255, 0, 0.5)",  // Yellow
-    "rgba(255, 0, 255, 0.5)",  // Magenta
-    "rgba(0, 255, 255, 0.5)",  // Cyan
-    "rgba(255, 165, 0, 0.5)",  // Orange
-    "rgba(128, 0, 128, 0.5)",  // Purple
-    "rgba(0, 128, 0, 0.5)",    // Dark Green
-    "rgba(128, 128, 0, 0.5)",  // Olive
-  ];
+ // Different colors for tooth mode with 0.4 opacity
+ const getToothColor = (index: number) => {
+   const toothColors = [
+     "rgba(255, 0, 0, 0.4)",      // Red
+     "rgba(0, 255, 0, 0.4)",      // Green
+     "rgba(0, 0, 255, 0.4)",      // Blue
+     "rgba(255, 255, 0, 0.4)",    // Yellow
+     "rgba(255, 0, 255, 0.4)",    // Magenta
+     "rgba(0, 255, 255, 0.4)",    // Cyan
+     "rgba(255, 165, 0, 0.4)",    // Orange
+     "rgba(128, 0, 128, 0.4)",    // Purple
+     "rgba(255, 20, 147, 0.4)",   // Deep Pink
+     "rgba(0, 128, 0, 0.4)",      // Dark Green
+     "rgba(128, 128, 0, 0.4)",    // Olive
+     "rgba(255, 69, 0, 0.4)",     // Red Orange
+     "rgba(138, 43, 226, 0.4)",   // Blue Violet
+     "rgba(75, 0, 130, 0.4)",     // Indigo
+     "rgba(205, 92, 92, 0.4)",    // Indian Red
+     "rgba(233, 150, 122, 0.4)",  // Dark Salmon
+     "rgba(255, 182, 193, 0.4)",  // Light Pink
+     "rgba(255, 105, 180, 0.4)",  // Hot Pink
+     "rgba(184, 134, 11, 0.4)",   // Dark Goldenrod
+     "rgba(128, 128, 128, 0.4)",  // Gray
+     "rgba(169, 169, 169, 0.4)",  // Dark Gray
+     "rgba(148, 0, 211, 0.4)",    // Dark Violet
+     "rgba(186, 85, 211, 0.4)",   // Medium Orchid
+     "rgba(60, 179, 113, 0.4)",   // Medium Sea Green
+     "rgba(255, 215, 0, 0.4)",    // Gold
+     "rgba(0, 128, 255, 0.4)",    // Deep Sky Blue
+     "rgba(192, 192, 192, 0.4)",  // Silver
+     "rgba(34, 139, 34, 0.4)",    // Forest Green
+     "rgba(219, 112, 147, 0.4)",  // Pale Violet Red
+     "rgba(218, 165, 32, 0.4)",   // Goldenrod
+     "rgba(210, 105, 30, 0.4)",   // Chocolate
+   ];
   return toothColors[index % toothColors.length];
 };
 

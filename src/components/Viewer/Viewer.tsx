@@ -1066,11 +1066,11 @@ export default function Viewer() {
           visible: true,
           id: `${className}-${index}`,
           label: (index + 1).toString(),
-          strokeColor: classColors[className]
-            ? classColors[className][1]
+          strokeColor: classColors[className?.split(".")[1]]
+            ? classColors[className?.split(".")[1]][1]
             : "rgb(255,0,0)",
-          bgColor: classColors[className]
-            ? classColors[className][0]
+          bgColor: classColors[className?.split(".")[1]]
+            ? classColors[className?.split(".")[1]][0]
             : "rgba(255, 0, 0, 0.5)",
           showStroke: true,
           showBackground: checkType === "path" ? true : false,

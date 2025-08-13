@@ -21,7 +21,7 @@ import {
   ImageMinus,
   Highlighter,
   Play,
-  Logs,
+  // Logs,
 } from "lucide-react";
 import { BsBoundingBoxCircles } from "react-icons/bs";
 import { MdOutlineCloudUpload } from "react-icons/md";

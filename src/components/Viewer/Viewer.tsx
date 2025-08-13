@@ -21,6 +21,7 @@ import {
   ImageMinus,
   Highlighter,
   Play,
+  Logs,
 } from "lucide-react";
 import { BsBoundingBoxCircles } from "react-icons/bs";
 import { MdOutlineCloudUpload } from "react-icons/md";
@@ -1135,7 +1136,7 @@ export default function Viewer() {
           if (coord.showStroke) ctx.stroke();
 
           if (coord.showLabel) {
-            const label = checkType === "tooth" ? annotation.class : `${coord.label}. ${annotation.class}`.trim();
+            const label = `${annotation.class}`.trim();
             if (label) {
               ctx.font = "12px Poppins";
               const textMetrics = ctx.measureText(label);
@@ -1186,7 +1187,7 @@ export default function Viewer() {
           }
 
           if (coord.showLabel) {
-            const label = checkType === "tooth" ? annotation.class : `${coord.label} ${annotation.class}`.trim();
+            const label = `${annotation.class}`.trim();
             if (label) {
               ctx.font = "12px Poppins";
               const textMetrics = ctx.measureText(label);
@@ -1307,7 +1308,7 @@ export default function Viewer() {
               }
 
               if (coord.showLabel) {
-                const label = `${annotation.class} ${coord.label}`;
+                const label = checkType === "qc" ? `${annotation.class} ${coord.label}` : `${annotation.class}`;
                 tempCtx.font = "12px Poppins";
                 const textMetrics = tempCtx.measureText(label);
                 const textHeight = 20;
@@ -1875,6 +1876,22 @@ export default function Viewer() {
               </TooltipContent>
             </Tooltip>
           </TooltipProvider>
+
+           {/* <TooltipProvider delayDuration={200}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button  className={`p-2 rounded-full ${buttonHoverColor}`}>
+                  <Logs size={20} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent
+                side="right"
+                className="px-3 py-1.5 text-sm font-medium shadow-lg"
+              >
+                Switch to Layer Based Viewer
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider> */}
 
           {/* <TooltipProvider delayDuration={200}>
             <Tooltip>

@@ -477,7 +477,7 @@ const RenderOPGAnnotationsList = ({
                     />
                   ) : (
                     <div className="flex gap-1 text-sm overflow-hidden">
-                      {checkType !== "tooth" && (
+                      {checkType === "qc" && (
                         <span
                           className={textColor}
                           style={{ whiteSpace: "nowrap" }}

@@ -897,7 +897,7 @@ export default function LayerViewerZoom() {
               if (coord.showBackground) ctx.fill();
               if (coord.showStroke) ctx.stroke();
               if (coord.showLabel) {
-                const label = layer.checkType === "tooth" ? annotation.class : `${coord.label}. ${annotation.class}`.trim();
+                const label = `${annotation.class}`.trim();
                 if (label) {
                   ctx.font = `${12 / zoom}px Poppins`;
                   const textMetrics = ctx.measureText(label);
@@ -949,7 +949,7 @@ export default function LayerViewerZoom() {
               }
 
               if (coord.showLabel) {
-                const label = layer.checkType === "tooth" ? annotation.class : `${coord.label} ${annotation.class}`.trim();
+                const label = `${annotation.class}`.trim();
                 if (label) {
                   ctx.font = `${10 / zoom}px Poppins`;
                   const textMetrics = ctx.measureText(label);
@@ -1762,7 +1762,7 @@ export default function LayerViewerZoom() {
               }
 
               if (coord.showLabel) {
-                const label = layer.checkType === "tooth" ? annotation.class : `${annotation.class} ${coord.label}`;
+                const label = layer.checkType === "qc" ? `${annotation.class} ${coord.label}` : `${annotation.class}`;
                 tempCtx.font = "12px Poppins";
                 const textMetrics = tempCtx.measureText(label);
                 tempCtx.fillStyle =

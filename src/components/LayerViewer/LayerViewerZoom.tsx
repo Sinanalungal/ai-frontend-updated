@@ -485,14 +485,14 @@ export default function LayerViewerZoom() {
           // Use smooth polygon drawing
           drawEnhancedSmoothPolygon(ctx, polygonPoints, {
             closed: true,
-            tension: 0.5,
+            tension: 0.6,
             fill: drawing.showBackground,
             stroke: drawing.showStroke,
             fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
             strokeColor: drawing.strokeColor || "#FFFFFF",
-            strokeWidth: 2 / zoom, // Adjust stroke width for zoom
-            shadowBlur: 2 / zoom, // Adjust shadow for zoom
-            shadowColor: "rgba(0, 0, 0, 0.3)"
+            strokeWidth: 1.5 / zoom, // Adjust stroke width for zoom
+            shadowBlur: 1 / zoom, // Adjust shadow for zoom
+            shadowColor: "rgba(0, 0, 0, 0.2)"
           });
         } else {
           // Fallback to regular polygon for very few points

@@ -552,14 +552,14 @@ export default function LayerViewer() {
           // Use smooth polygon drawing
           drawEnhancedSmoothPolygon(ctx, polygonPoints, {
             closed: true,
-            tension: 0.5,
+            tension: 0.6,
             fill: drawing.showBackground,
             stroke: drawing.showStroke,
             fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
             strokeColor: drawing.strokeColor || "#FFFFFF",
-            strokeWidth: 2,
-            shadowBlur: 2,
-            shadowColor: "rgba(0, 0, 0, 0.3)"
+            strokeWidth: 1.5,
+            shadowBlur: 1,
+            shadowColor: "rgba(0, 0, 0, 0.2)"
           });
         } else {
           // Fallback to regular polygon for very few points

@@ -676,14 +676,14 @@ export default function Viewer() {
           // Use smooth polygon drawing
           drawEnhancedSmoothPolygon(ctx, polygonPoints, {
             closed: true,
-            tension: 0.5,
+            tension: 0.6,
             fill: drawing.showBackground,
             stroke: drawing.showStroke,
             fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
             strokeColor: drawing.strokeColor || "#FFFFFF",
-            strokeWidth: 2,
-            shadowBlur: 2,
-            shadowColor: "rgba(0, 0, 0, 0.3)"
+            strokeWidth: 1.5,
+            shadowBlur: 1,
+            shadowColor: "rgba(0, 0, 0, 0.2)"
           });
         } else {
           // Fallback to regular polygon for very few points
@@ -844,10 +844,10 @@ export default function Viewer() {
         if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
           // Close the polygon with smooth curves
           polygonPoints.push([startX, startY]);
-          drawSmoothPolygon(ctx, polygonPoints, true, 0.5, false, true);
+          drawSmoothPolygon(ctx, polygonPoints, true, 0.6, false, true);
         } else {
           // Draw open polygon with smooth curves
-          drawSmoothPolygon(ctx, polygonPoints, false, 0.5, false, true);
+          drawSmoothPolygon(ctx, polygonPoints, false, 0.6, false, true);
         }
       } else if (startPoint) {
         drawShape(ctx, {
@@ -1496,14 +1496,14 @@ export default function Viewer() {
                   // Use smooth polygon drawing
                   drawEnhancedSmoothPolygon(tempCtx, polygonPoints, {
                     closed: true,
-                    tension: 0.5,
+                    tension: 0.6,
                     fill: drawing.showBackground,
                     stroke: drawing.showStroke,
                     fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
                     strokeColor: drawing.strokeColor || "#FFFFFF",
-                    strokeWidth: 2,
-                    shadowBlur: 2,
-                    shadowColor: "rgba(0, 0, 0, 0.3)"
+                    strokeWidth: 1.5,
+                    shadowBlur: 1,
+                    shadowColor: "rgba(0, 0, 0, 0.2)"
                   });
                 } else {
                   // Fallback to regular polygon

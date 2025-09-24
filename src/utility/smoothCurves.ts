@@ -11,7 +11,7 @@
 export function drawSmoothCurve(
   ctx: CanvasRenderingContext2D,
   points: number[][],
-  tension: number = 0.5
+  tension: number = 0.6
 ): void {
   if (points.length < 2) return;
 
@@ -30,11 +30,17 @@ export function drawSmoothCurve(
     const prev = points[i - 1] || current;
     const nextNext = points[i + 2] || next;
 
-    // Calculate control points for cubic Bézier curves
-    const cp1x = current[0] + (next[0] - prev[0]) * tension;
-    const cp1y = current[1] + (next[1] - prev[1]) * tension;
-    const cp2x = next[0] - (nextNext[0] - current[0]) * tension;
-    const cp2y = next[1] - (nextNext[1] - current[1]) * tension;
+    // Calculate distance-based tension for smoother curves
+    const dist1 = Math.sqrt((next[0] - prev[0]) ** 2 + (next[1] - prev[1]) ** 2);
+    const dist2 = Math.sqrt((nextNext[0] - current[0]) ** 2 + (nextNext[1] - current[1]) ** 2);
+    const avgDist = (dist1 + dist2) / 2;
+    const adaptiveTension = Math.min(tension, avgDist * 0.1);
+
+    // Calculate control points for cubic Bézier curves with adaptive tension
+    const cp1x = current[0] + (next[0] - prev[0]) * adaptiveTension;
+    const cp1y = current[1] + (next[1] - prev[1]) * adaptiveTension;
+    const cp2x = next[0] - (nextNext[0] - current[0]) * adaptiveTension;
+    const cp2y = next[1] - (nextNext[1] - current[1]) * adaptiveTension;
 
     ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next[0], next[1]);
   }
@@ -49,7 +55,7 @@ export function drawSmoothCurve(
 export function drawSmoothClosedCurve(
   ctx: CanvasRenderingContext2D,
   points: number[][],
-  tension: number = 0.5
+  tension: number = 0.6
 ): void {
   if (points.length < 3) return;
 
@@ -63,11 +69,17 @@ export function drawSmoothClosedCurve(
     const prev = points[(i - 1 + points.length) % points.length];
     const nextNext = points[(i + 2) % points.length];
 
-    // Calculate control points for cubic Bézier curves
-    const cp1x = current[0] + (next[0] - prev[0]) * tension;
-    const cp1y = current[1] + (next[1] - prev[1]) * tension;
-    const cp2x = next[0] - (nextNext[0] - current[0]) * tension;
-    const cp2y = next[1] - (nextNext[1] - current[1]) * tension;
+    // Calculate distance-based tension for smoother curves
+    const dist1 = Math.sqrt((next[0] - prev[0]) ** 2 + (next[1] - prev[1]) ** 2);
+    const dist2 = Math.sqrt((nextNext[0] - current[0]) ** 2 + (nextNext[1] - current[1]) ** 2);
+    const avgDist = (dist1 + dist2) / 2;
+    const adaptiveTension = Math.min(tension, avgDist * 0.1);
+
+    // Calculate control points for cubic Bézier curves with adaptive tension
+    const cp1x = current[0] + (next[0] - prev[0]) * adaptiveTension;
+    const cp1y = current[1] + (next[1] - prev[1]) * adaptiveTension;
+    const cp2x = next[0] - (nextNext[0] - current[0]) * adaptiveTension;
+    const cp2y = next[1] - (nextNext[1] - current[1]) * adaptiveTension;
 
     ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next[0], next[1]);
   }
@@ -88,7 +100,7 @@ export function drawSmoothPolygon(
   ctx: CanvasRenderingContext2D,
   points: number[][],
   closed: boolean = true,
-  tension: number = 0.5,
+  tension: number = 0.6,
   fill: boolean = true,
   stroke: boolean = true
 ): void {
@@ -119,7 +131,7 @@ export function drawSmoothPolygon(
  */
 export function createSmoothControlPoints(
   points: number[][],
-  tension: number = 0.5
+  tension: number = 0.6
 ): number[][][] {
   if (points.length < 3) return [];
 
@@ -167,14 +179,14 @@ export function drawEnhancedSmoothPolygon(
 ): void {
   const {
     closed = true,
-    tension = 0.3,
+    tension = 0.6,
     fill = true,
     stroke = true,
     fillColor = "rgba(255, 0, 0, 0.5)",
     strokeColor = "rgba(255, 0, 0, 0.8)",
-    strokeWidth = 2,
+    strokeWidth = 1.5,
     shadowBlur = 0,
-    shadowColor = "rgba(0, 0, 0, 0.3)"
+    shadowColor = "rgba(0, 0, 0, 0.2)"
   } = options;
 
   if (points.length < 2) return;
@@ -192,12 +204,15 @@ export function drawEnhancedSmoothPolygon(
   if (fill) {
     ctx.fillStyle = fillColor;
   }
-  if (stroke) {
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = strokeWidth;
-    ctx.lineCap = "round";
-    ctx.lineJoin = "round";
-  }
+            if (stroke) {
+                ctx.strokeStyle = strokeColor;
+                ctx.lineWidth = strokeWidth;
+                ctx.lineCap = "round";
+                ctx.lineJoin = "round";
+                ctx.lineDashOffset = 0;
+                ctx.setLineDash([]); // Ensure no dash pattern
+                ctx.miterLimit = 10; // Smooth joins
+            }
 
   // Draw the smooth polygon
   drawSmoothPolygon(ctx, points, closed, tension, fill, stroke);

@@ -44,6 +44,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { checkTypeOptions } from "@/constants/teethRelated";
+import { drawSmoothPolygon, drawEnhancedSmoothPolygon } from "@/utility/smoothCurves";
 
 const SNAP_THRESHOLD = 10;
 
@@ -541,13 +542,35 @@ export default function LayerViewer() {
         if (drawing.showStroke) ctx.stroke();
         break;
       case "polygon":
-        ctx.moveTo(points[0] * scaleX, points[1] * scaleY);
-        for (let i = 2; i < points.length; i += 2) {
-          ctx.lineTo(points[i] * scaleX, points[i + 1] * scaleY);
+        if (points.length >= 6) {
+          // Convert points to [x, y] format for smooth polygon
+          const polygonPoints = [];
+          for (let i = 0; i < points.length; i += 2) {
+            polygonPoints.push([points[i] * scaleX, points[i + 1] * scaleY]);
+          }
+          
+          // Use smooth polygon drawing
+          drawEnhancedSmoothPolygon(ctx, polygonPoints, {
+            closed: true,
+            tension: 0.3,
+            fill: drawing.showBackground,
+            stroke: drawing.showStroke,
+            fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
+            strokeColor: drawing.strokeColor || "#FFFFFF",
+            strokeWidth: 2,
+            shadowBlur: 2,
+            shadowColor: "rgba(0, 0, 0, 0.3)"
+          });
+        } else {
+          // Fallback to regular polygon for very few points
+          ctx.moveTo(points[0] * scaleX, points[1] * scaleY);
+          for (let i = 2; i < points.length; i += 2) {
+            ctx.lineTo(points[i] * scaleX, points[i + 1] * scaleY);
+          }
+          ctx.closePath();
+          if (drawing.showBackground) ctx.fill();
+          if (drawing.showStroke) ctx.stroke();
         }
-        ctx.closePath();
-        if (drawing.showBackground) ctx.fill();
-        if (drawing.showStroke) ctx.stroke();
         break;
     }
 

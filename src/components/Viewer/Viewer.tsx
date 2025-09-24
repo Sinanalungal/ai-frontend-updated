@@ -49,6 +49,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { checkTypeOptions } from "@/constants/teethRelated";
+import { drawSmoothPolygon, drawEnhancedSmoothPolygon } from "@/utility/smoothCurves";
 
 
 interface Drawing {
@@ -665,13 +666,35 @@ export default function Viewer() {
         if (drawing.showStroke) ctx.stroke();
         break;
       case "polygon":
-        ctx.moveTo(points[0], points[1]);
-        for (let i = 2; i < points.length; i += 2) {
-          ctx.lineTo(points[i], points[i + 1]);
+        if (points.length >= 6) {
+          // Convert points to [x, y] format for smooth polygon
+          const polygonPoints = [];
+          for (let i = 0; i < points.length; i += 2) {
+            polygonPoints.push([points[i], points[i + 1]]);
+          }
+          
+          // Use smooth polygon drawing
+          drawEnhancedSmoothPolygon(ctx, polygonPoints, {
+            closed: true,
+            tension: 0.3,
+            fill: drawing.showBackground,
+            stroke: drawing.showStroke,
+            fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
+            strokeColor: drawing.strokeColor || "#FFFFFF",
+            strokeWidth: 2,
+            shadowBlur: 2,
+            shadowColor: "rgba(0, 0, 0, 0.3)"
+          });
+        } else {
+          // Fallback to regular polygon for very few points
+          ctx.moveTo(points[0], points[1]);
+          for (let i = 2; i < points.length; i += 2) {
+            ctx.lineTo(points[i], points[i + 1]);
+          }
+          ctx.closePath();
+          if (drawing.showBackground) ctx.fill();
+          if (drawing.showStroke) ctx.stroke();
         }
-        ctx.closePath();
-        if (drawing.showBackground) ctx.fill();
-        if (drawing.showStroke) ctx.stroke();
         break;
     }
 
@@ -805,25 +828,27 @@ export default function Viewer() {
       drawAnnotations();
 
       if (currentTool === "polygon" && isPolygonDrawing) {
-        ctx.beginPath();
-        ctx.strokeStyle = "#FFFFFF";
-        ctx.lineWidth = 2;
-        ctx.moveTo(currentPoints[0], currentPoints[1]);
-        for (let i = 2; i < currentPoints.length; i += 2) {
-          ctx.lineTo(currentPoints[i], currentPoints[i + 1]);
+        // Convert current points to [x, y] format
+        const polygonPoints = [];
+        for (let i = 0; i < currentPoints.length; i += 2) {
+          polygonPoints.push([currentPoints[i], currentPoints[i + 1]]);
         }
-        ctx.lineTo(x, y);
+        polygonPoints.push([x, y]);
 
         const startX = currentPoints[0];
         const startY = currentPoints[1];
         const distance = Math.sqrt(
           Math.pow(x - startX, 2) + Math.pow(y - startY, 2)
         );
+        
         if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
-          ctx.lineTo(startX, startY);
+          // Close the polygon with smooth curves
+          polygonPoints.push([startX, startY]);
+          drawSmoothPolygon(ctx, polygonPoints, true, 0.3, false, true);
+        } else {
+          // Draw open polygon with smooth curves
+          drawSmoothPolygon(ctx, polygonPoints, false, 0.3, false, true);
         }
-
-        ctx.stroke();
       } else if (startPoint) {
         drawShape(ctx, {
           type: currentTool,
@@ -1461,13 +1486,35 @@ export default function Viewer() {
                   index % 2 === 0 ? point * scaleX : point * scaleY
                 );
 
-                tempCtx.moveTo(scaledPoints[0], scaledPoints[1]);
-                for (let i = 2; i < scaledPoints.length; i += 2) {
-                  tempCtx.lineTo(scaledPoints[i], scaledPoints[i + 1]);
+                if (scaledPoints.length >= 6) {
+                  // Convert to [x, y] format for smooth polygon
+                  const polygonPoints = [];
+                  for (let i = 0; i < scaledPoints.length; i += 2) {
+                    polygonPoints.push([scaledPoints[i], scaledPoints[i + 1]]);
+                  }
+                  
+                  // Use smooth polygon drawing
+                  drawEnhancedSmoothPolygon(tempCtx, polygonPoints, {
+                    closed: true,
+                    tension: 0.3,
+                    fill: drawing.showBackground,
+                    stroke: drawing.showStroke,
+                    fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
+                    strokeColor: drawing.strokeColor || "#FFFFFF",
+                    strokeWidth: 2,
+                    shadowBlur: 2,
+                    shadowColor: "rgba(0, 0, 0, 0.3)"
+                  });
+                } else {
+                  // Fallback to regular polygon
+                  tempCtx.moveTo(scaledPoints[0], scaledPoints[1]);
+                  for (let i = 2; i < scaledPoints.length; i += 2) {
+                    tempCtx.lineTo(scaledPoints[i], scaledPoints[i + 1]);
+                  }
+                  tempCtx.closePath();
+                  if (drawing.showBackground) tempCtx.fill();
+                  if (drawing.showStroke) tempCtx.stroke();
                 }
-                tempCtx.closePath();
-                if (drawing.showBackground) tempCtx.fill();
-                if (drawing.showStroke) tempCtx.stroke();
 
                 if (drawing.showLabel && drawing.label) {
                   const textMetrics = tempCtx.measureText(drawing.label);

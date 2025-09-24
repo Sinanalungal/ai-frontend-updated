@@ -1,9 +1,9 @@
 /**
- * Utility functions for drawing smooth curves using quadratic Bézier curves
+ * Utility functions for drawing smooth curves using cubic Bézier curves
  */
 
 /**
- * Draw a smooth curve through a series of points using quadratic Bézier curves
+ * Draw a smooth curve through a series of points using cubic Bézier curves
  * @param ctx - Canvas 2D context
  * @param points - Array of [x, y] coordinate pairs
  * @param tension - Smoothness factor (0-1, higher = smoother)
@@ -11,37 +11,32 @@
 export function drawSmoothCurve(
   ctx: CanvasRenderingContext2D,
   points: number[][],
-  tension: number = 0.3
+  tension: number = 0.5
 ): void {
   if (points.length < 2) return;
 
   ctx.beginPath();
   ctx.moveTo(points[0][0], points[0][1]);
 
-  for (let i = 1; i < points.length - 1; i++) {
-    const current = points[i];
-    const next = points[i + 1];
-    const previous = points[i - 1];
-
-    // Calculate control points for smooth curves
-    const cp1x = current[0] + (next[0] - previous[0]) * tension;
-    const cp1y = current[1] + (next[1] - previous[1]) * tension;
-
-    ctx.quadraticCurveTo(cp1x, cp1y, next[0], next[1]);
+  if (points.length === 2) {
+    ctx.lineTo(points[1][0], points[1][1]);
+    return;
   }
 
-  // Handle the last point
-  if (points.length > 2) {
-    const last = points[points.length - 1];
-    const secondLast = points[points.length - 2];
-    const thirdLast = points[points.length - 3];
+  // Calculate control points for smooth curves using cubic Bézier
+  for (let i = 0; i < points.length - 1; i++) {
+    const current = points[i];
+    const next = points[i + 1];
+    const prev = points[i - 1] || current;
+    const nextNext = points[i + 2] || next;
 
-    const cp1x = secondLast[0] + (last[0] - thirdLast[0]) * tension;
-    const cp1y = secondLast[1] + (last[1] - thirdLast[1]) * tension;
+    // Calculate control points for cubic Bézier curves
+    const cp1x = current[0] + (next[0] - prev[0]) * tension;
+    const cp1y = current[1] + (next[1] - prev[1]) * tension;
+    const cp2x = next[0] - (nextNext[0] - current[0]) * tension;
+    const cp2y = next[1] - (nextNext[1] - current[1]) * tension;
 
-    ctx.quadraticCurveTo(cp1x, cp1y, last[0], last[1]);
-  } else {
-    ctx.lineTo(points[points.length - 1][0], points[points.length - 1][1]);
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next[0], next[1]);
   }
 }
 
@@ -54,13 +49,29 @@ export function drawSmoothCurve(
 export function drawSmoothClosedCurve(
   ctx: CanvasRenderingContext2D,
   points: number[][],
-  tension: number = 0.3
+  tension: number = 0.5
 ): void {
   if (points.length < 3) return;
 
-  // Add the first point to the end to close the curve
-  const closedPoints = [...points, points[0]];
-  drawSmoothCurve(ctx, closedPoints, tension);
+  ctx.beginPath();
+  ctx.moveTo(points[0][0], points[0][1]);
+
+  // For closed curves, we need to handle the wrap-around properly
+  for (let i = 0; i < points.length; i++) {
+    const current = points[i];
+    const next = points[(i + 1) % points.length];
+    const prev = points[(i - 1 + points.length) % points.length];
+    const nextNext = points[(i + 2) % points.length];
+
+    // Calculate control points for cubic Bézier curves
+    const cp1x = current[0] + (next[0] - prev[0]) * tension;
+    const cp1y = current[1] + (next[1] - prev[1]) * tension;
+    const cp2x = next[0] - (nextNext[0] - current[0]) * tension;
+    const cp2y = next[1] - (nextNext[1] - current[1]) * tension;
+
+    ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, next[0], next[1]);
+  }
+
   ctx.closePath();
 }
 
@@ -77,7 +88,7 @@ export function drawSmoothPolygon(
   ctx: CanvasRenderingContext2D,
   points: number[][],
   closed: boolean = true,
-  tension: number = 0.3,
+  tension: number = 0.5,
   fill: boolean = true,
   stroke: boolean = true
 ): void {
@@ -108,7 +119,7 @@ export function drawSmoothPolygon(
  */
 export function createSmoothControlPoints(
   points: number[][],
-  tension: number = 0.3
+  tension: number = 0.5
 ): number[][][] {
   if (points.length < 3) return [];
 

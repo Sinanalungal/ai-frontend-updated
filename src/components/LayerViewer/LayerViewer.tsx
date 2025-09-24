@@ -552,7 +552,7 @@ export default function LayerViewer() {
           // Use smooth polygon drawing
           drawEnhancedSmoothPolygon(ctx, polygonPoints, {
             closed: true,
-            tension: 0.3,
+            tension: 0.5,
             fill: drawing.showBackground,
             stroke: drawing.showStroke,
             fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",

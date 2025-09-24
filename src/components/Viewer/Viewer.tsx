@@ -676,7 +676,7 @@ export default function Viewer() {
           // Use smooth polygon drawing
           drawEnhancedSmoothPolygon(ctx, polygonPoints, {
             closed: true,
-            tension: 0.3,
+            tension: 0.5,
             fill: drawing.showBackground,
             stroke: drawing.showStroke,
             fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",
@@ -844,10 +844,10 @@ export default function Viewer() {
         if (distance < SNAP_THRESHOLD && currentPoints.length >= 6) {
           // Close the polygon with smooth curves
           polygonPoints.push([startX, startY]);
-          drawSmoothPolygon(ctx, polygonPoints, true, 0.3, false, true);
+          drawSmoothPolygon(ctx, polygonPoints, true, 0.5, false, true);
         } else {
           // Draw open polygon with smooth curves
-          drawSmoothPolygon(ctx, polygonPoints, false, 0.3, false, true);
+          drawSmoothPolygon(ctx, polygonPoints, false, 0.5, false, true);
         }
       } else if (startPoint) {
         drawShape(ctx, {
@@ -1496,7 +1496,7 @@ export default function Viewer() {
                   // Use smooth polygon drawing
                   drawEnhancedSmoothPolygon(tempCtx, polygonPoints, {
                     closed: true,
-                    tension: 0.3,
+                    tension: 0.5,
                     fill: drawing.showBackground,
                     stroke: drawing.showStroke,
                     fillColor: drawing.bgColor || "rgba(255, 255, 255, 0.3)",

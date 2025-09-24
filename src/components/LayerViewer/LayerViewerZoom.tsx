@@ -46,7 +46,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { checkTypeOptions } from "@/constants/teethRelated";
-import { drawSmoothPolygon, drawEnhancedSmoothPolygon } from "@/utility/smoothCurves";
+import { drawEnhancedSmoothPolygon } from "@/utility/smoothCurves";
 
 const SNAP_THRESHOLD = 10;
 

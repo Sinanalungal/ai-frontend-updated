@@ -26,8 +26,6 @@ export function drawSmoothCurve(
     // Calculate control points for smooth curves
     const cp1x = current[0] + (next[0] - previous[0]) * tension;
     const cp1y = current[1] + (next[1] - previous[1]) * tension;
-    const cp2x = next[0] - (next[0] - previous[0]) * tension;
-    const cp2y = next[1] - (next[1] - previous[1]) * tension;
 
     ctx.quadraticCurveTo(cp1x, cp1y, next[0], next[1]);
   }
